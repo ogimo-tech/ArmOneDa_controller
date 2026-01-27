@@ -7,21 +7,29 @@
     <style>
         body {
             font-family: "Helvetica Neue", Arial, sans-serif;
-            max-width: 500px;
+            max-width: 500px; /* 全体の最大幅 */
             margin: 0 auto;
             padding: 20px;
             background-color: #f4f4f9;
             color: #333;
         }
-        h1 { text-align: center; color: #2c3e50; font-size: 1.5rem; margin-bottom: 10px;}
+        .logo-container {
+            text-align: center;
+            margin-bottom: 15px;
+        }
+        .logo-container img {
+            max-width: 100%; /* 親要素(bodyの500px)からはみ出さないようにする設定 */
+            height: auto;
+            width: 560px; /* ←ここを2倍の数値に変更（実質、枠いっぱいに広がります） */
+        }
+        h1 { text-align: center; color: #2c3e50; font-size: 1.3rem; margin-bottom: 10px;}
         h2 { 
             border-bottom: 2px solid #ddd; 
             padding-bottom: 5px; 
-            margin-top: 30px; 
+            margin-top: 25px; 
             font-size: 1.1rem;
             color: #555;
         }
-        
         .status-box {
             background: #fff;
             padding: 15px;
@@ -31,7 +39,6 @@
             margin-bottom: 20px;
         }
         #statusText { font-weight: bold; color: #d9534f; }
-        
         button {
             background-color: #007bff;
             color: white;
@@ -47,26 +54,13 @@
         button:active { transform: scale(0.98); }
         button:hover { background-color: #0056b3; }
         button:disabled { background-color: #ccc; cursor: not-allowed; opacity: 0.6; }
-        
         .btn-connect { background-color: #28a745; width: 100%; }
-        .btn-connect:hover { background-color: #218838; }
-        
         .btn-stop { background-color: #6c757d; }
-        .btn-stop:hover { background-color: #5a6268; }
-
         .btn-mode-on { background-color: #e67e22; }
-        .btn-mode-on:hover { background-color: #d35400; }
-
-        .button-row {
-            display: flex;
-            justify-content: space-between;
-            gap: 10px;
-            margin-bottom: 10px;
-        }
+        .button-row { display: flex; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
         .button-row button { flex: 1; }
         .button-center { display: flex; justify-content: center; }
         .button-center button { width: 50%; }
-
         .slider-container {
             background: #fff;
             padding: 15px;
@@ -74,26 +68,9 @@
             text-align: center;
             transition: opacity 0.3s;
         }
-        .slider-disabled {
-            opacity: 0.5;
-            pointer-events: none;
-            background: #eee;
-        }
-
-        input[type=range] {
-            width: 100%;
-            margin: 15px 0;
-            cursor: pointer;
-        }
-        .angle-display {
-            font-size: 1.2rem;
-            font-weight: bold;
-            color: #007bff;
-            display: inline-block;
-            width: 60px;
-            text-align: right;
-        }
-
+        .slider-disabled { opacity: 0.5; pointer-events: none; background: #eee; }
+        input[type=range] { width: 100%; margin: 15px 0; cursor: pointer; }
+        .angle-display { font-size: 1.2rem; font-weight: bold; color: #007bff; display: inline-block; width: 60px; text-align: right; }
         #logArea {
             margin-top: 30px;
             font-size: 11px;
@@ -109,7 +86,11 @@
 </head>
 <body>
 
-    <h1>アームワンダAIR<br>Webコントローラー</h1>
+    <div class="logo-container">
+        <img src="armoneda_air_logo.png" alt="アームワンダAIR ロゴ">
+    </div>
+
+    <h1>Webコントローラー</h1>
 
     <div class="status-box">
         <span id="statusText">未接続</span>
@@ -146,7 +127,6 @@
                     <span id="currentAngleDisplay" class="angle-display">0</span> 度
                 </div>
             </div>
-            
             <input type="range" id="angleSlider" min="-180" max="180" value="0" disabled oninput="onSliderMove(this.value)">
         </div>
         
@@ -162,80 +142,54 @@
     <script>
         const SERVICE_UUID = "a6b00001-0eda-4b52-8e2d-9b1c3d4e5f60";
         const DEVICE_NAME_PREFIX = "ArmOneDa-BLE-";
-        
-        // --- 設定値 ---
-        const SEND_INTERVAL = 200;  // 送信間隔制限 (ミリ秒)
-        const MIN_ANGLE_CHANGE = 3; // 最小変化角度 (度)
+        const SEND_INTERVAL = 200;
+        const MIN_ANGLE_CHANGE = 3;
 
         let bluetoothDevice;
         let infoCharacteristic;
-        
-        // 制御用変数
-        let lastSentAngle = null;  // 最後に送信した角度
-        let isSending = false;     // ビジーフラグ
-        let lastSendTime = 0;      // 最後に送信した時刻
-        let throttleTimer = null;  // 遅延実行用のタイマー
+        let lastSentAngle = null;
+        let isSending = false;
+        let lastSendTime = 0;
+        let throttleTimer = null;
 
         function log(text) {
             const logArea = document.getElementById('logArea');
             const time = new Date().toLocaleTimeString();
             logArea.innerHTML = `[${time}] ${text}<br>` + logArea.innerHTML;
-            console.log(text);
         }
 
         async function connectDevice() {
             try {
-                log("デバイス検索中...");
+                log("検索中...");
                 bluetoothDevice = await navigator.bluetooth.requestDevice({
                     filters: [{ namePrefix: DEVICE_NAME_PREFIX }],
                     optionalServices: [SERVICE_UUID]
                 });
-
-                bluetoothDevice.addEventListener('gattserverdisconnected', onDisconnected);
-
-                log("接続中...");
+                bluetoothDevice.addEventListener('gattserverdisconnected', () => updateUIState(false));
                 const server = await bluetoothDevice.gatt.connect();
                 const service = await server.getPrimaryService(SERVICE_UUID);
-                
                 const characteristics = await service.getCharacteristics();
                 infoCharacteristic = characteristics.find(c => c.properties.write || c.properties.writeWithoutResponse);
-
-                if (!infoCharacteristic) {
-                    throw new Error("書き込み先が見つかりません");
-                }
-
-                log("接続完了!");
                 updateUIState(true);
-
+                log("接続成功!");
             } catch (error) {
                 log("エラー: " + error);
-                alert("接続できませんでした。\n" + error);
             }
         }
 
         function disconnectDevice() {
-            if (bluetoothDevice && bluetoothDevice.gatt.connected) {
-                bluetoothDevice.gatt.disconnect();
-            }
-        }
-
-        function onDisconnected() {
-            log("切断されました");
-            updateUIState(false);
-            setAngleModeUI(false);
+            if (bluetoothDevice && bluetoothDevice.gatt.connected) bluetoothDevice.gatt.disconnect();
         }
 
         function updateUIState(isConnected) {
             const statusText = document.getElementById("statusText");
             const connectBtn = document.getElementById("connectBtn");
             const controls = document.getElementById("controls");
-
             if (isConnected) {
                 statusText.innerText = "接続済み: " + bluetoothDevice.name;
                 statusText.style.color = "#28a745";
-                connectBtn.innerText = "切断する";
+                connectBtn.innerText = "切断";
                 connectBtn.onclick = disconnectDevice;
-                connectBtn.classList.replace("btn-connect", "btn-stop");
                 controls.style.opacity = "1";
                 controls.style.pointerEvents = "auto";
             } else {
@@ -243,7 +197,6 @@
                 statusText.style.color = "#d9534f";
                 connectBtn.innerText = "接続開始";
                 connectBtn.onclick = connectDevice;
-                connectBtn.classList.replace("btn-stop", "btn-connect");
                 controls.style.opacity = "0.5";
                 controls.style.pointerEvents = "none";
             }
@@ -251,103 +204,54 @@
 
         async function sendCommand(cmd) {
             if (!bluetoothDevice || !bluetoothDevice.gatt.connected) return;
-            
             isSending = true;
             try {
                 const encoder = new TextEncoder();
                 await infoCharacteristic.writeValue(encoder.encode(cmd));
                 log("送信: " + cmd);
-            } catch (error) {
-                log("送信失敗: " + error);
-            } finally {
-                isSending = false;
-            }
+            } finally { isSending = false; }
         }
-
-        // --- 角度モード関連 ---
 
         async function setAngleMode(isOn) {
-            setAngleModeUI(isOn);
-
-            if (isOn) {
-                // ON時は即座に今の位置に同期させるため強制送信
-                const currentVal = document.getElementById("angleSlider").value;
-                lastSentAngle = null; 
-                lastSendTime = 0; // タイマーリセット
-                await sendAngleCommand(currentVal, true);
-            } else {
-                // OFF処理
-                await sendCommand("#AMOH1OFF!");
-                
-                // リセット処理
-                lastSentAngle = null;
-                document.getElementById("angleSlider").value = 0;
-                document.getElementById("currentAngleDisplay").innerText = 0;
-            }
-        }
-
-        function setAngleModeUI(isOn) {
             const area = document.getElementById("angleArea");
             const slider = document.getElementById("angleSlider");
-
             if (isOn) {
                 area.classList.remove("slider-disabled");
                 slider.disabled = false;
+                await sendAngleCommand(slider.value, true);
             } else {
+                await sendCommand("#AMOH1OFF!");
                 area.classList.add("slider-disabled");
                 slider.disabled = true;
+                slider.value = 0;
+                document.getElementById("currentAngleDisplay").innerText = 0;
+                lastSentAngle = null;
                 if(throttleTimer) clearTimeout(throttleTimer);
             }
         }
 
-        // スライダー操作時の処理
         function onSliderMove(val) {
-            // UI表示はリアルタイムに更新
             document.getElementById("currentAngleDisplay").innerText = val;
-
             const now = Date.now();
-            const timeElapsed = now - lastSendTime;
-            
-            // 現在値と、前回送信値との差分 (初回は0として扱う)
-            const currentDiff = Math.abs(val - (lastSentAngle !== null ? lastSentAngle : 0));
-
-            // 条件判定: 時間が経過している かつ 変化が大きい
-            if (timeElapsed >= SEND_INTERVAL && currentDiff >= MIN_ANGLE_CHANGE) {
-                // 即時送信
+            const diff = Math.abs(val - (lastSentAngle || 0));
+            if (now - lastSendTime >= SEND_INTERVAL && diff >= MIN_ANGLE_CHANGE) {
                 sendAngleCommand(val);
                 if (throttleTimer) clearTimeout(throttleTimer);
-            } 
-            else {
-                // 遅延チェックを予約
+            } else {
                 if (throttleTimer) clearTimeout(throttleTimer);
-
-                const waitTime = Math.max(0, SEND_INTERVAL - timeElapsed);
-
                 throttleTimer = setTimeout(() => {
-                    const delayedVal = document.getElementById("angleSlider").value;
-                    const delayedDiff = Math.abs(delayedVal - (lastSentAngle !== null ? lastSentAngle : 0));
-                    
-                    if (delayedDiff >= MIN_ANGLE_CHANGE) {
-                        sendAngleCommand(delayedVal);
-                    }
-                }, waitTime);
+                    const cur = document.getElementById("angleSlider").value;
+                    if (Math.abs(cur - (lastSentAngle || 0)) >= MIN_ANGLE_CHANGE) sendAngleCommand(cur);
+                }, SEND_INTERVAL);
             }
         }
 
         async function sendAngleCommand(val, force = false) {
-            // forceフラグがある場合は無条件送信
-            if (!force) {
-                if (val === lastSentAngle) return;
-                if (isSending) return; // ビジーチェック
-            }
-
+            if (!force && (val === lastSentAngle || isSending)) return;
             lastSentAngle = val;
             lastSendTime = Date.now();
-            
-            const cmd = "#AMOH1AD" + val + "!";
-            await sendCommand(cmd);
+            await sendCommand("#AMOH1AD" + val + "!");
         }
-
     </script>
 </body>
 </html>
