@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>アームワンダAIR フェイス・コントローラ</title>
+    <title>アームワンダAIR フェイス・コントローラ V5</title>
     
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
@@ -37,15 +37,15 @@
             height: auto;
         }
         
-        /* タイトルスタイル（大きく目立たせる） */
+        /* タイトルスタイル */
         h1.app-title {
             margin: 0 0 25px 0;
-            font-size: 2.2rem; /* サイズアップ */
+            font-size: 2.2rem;
             color: #fff;
-            font-weight: 900; /* 太く */
+            font-weight: 900;
             letter-spacing: 2px;
-            text-shadow: 0 2px 5px rgba(0,0,0,0.5); /* 影をつけて立体的に */
-            border-bottom: 2px solid #555; /* 下線を追加 */
+            text-shadow: 0 2px 5px rgba(0,0,0,0.5);
+            border-bottom: 2px solid #555;
             padding-bottom: 10px;
             display: inline-block;
         }
@@ -66,7 +66,7 @@
             top: 0; left: 0;
             width: 100%; height: 100%;
             object-fit: cover;
-            transform: scaleX(-1); /* 鏡反転 */
+            transform: scaleX(-1);
         }
         canvas {
             position: absolute;
@@ -98,7 +98,7 @@
             box-sizing: border-box;
         }
 
-        /* ボタンエリア（縦並び） */
+        /* ボタンエリア */
         .btn-group {
             display: flex;
             flex-direction: column;
@@ -136,17 +136,38 @@
         }
         @keyframes pulse { 0% {box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.7);} 70% {box-shadow: 0 0 0 10px rgba(220, 53, 69, 0);} 100% {box-shadow: 0 0 0 0 rgba(220, 53, 69, 0);} }
 
-        /* モード選択ラジオボタン */
-        .mode-select {
+        /* 設定エリア (モード選択など) */
+        .settings-group {
             display: flex;
-            justify-content: center;
-            gap: 20px;
+            flex-direction: column;
+            gap: 15px;
             margin-bottom: 20px;
+        }
+
+        .radio-box {
             background: #444;
             padding: 15px;
             border-radius: 8px;
             border: 1px solid #555;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
         }
+        .radio-title {
+            font-weight: bold;
+            font-size: 14px;
+            color: #ccc;
+            margin-bottom: 5px;
+            display: block;
+            text-align: left;
+        }
+        .radio-options {
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+            width: 100%;
+        }
+
         .mode-label {
             cursor: pointer;
             display: flex;
@@ -184,7 +205,7 @@
             <video id="input_video" autoplay playsinline></video>
             <canvas id="output_canvas" width="640" height="360"></canvas>
             <div class="overlay-info">
-                モード: <span id="modeDisp">上下</span><br>
+                モード: <span id="modeDisp">上下</span> / <span id="perfDisp">通常</span><br>
                 顔角度: <span id="currentAngleVal">--</span>°
             </div>
         </div>
@@ -196,15 +217,38 @@
                 <button id="controlBtn" class="btn-start" onclick="toggleControl()">② アーム制御開始</button>
             </div>
 
-            <div class="mode-select">
-                <label class="mode-label">
-                    <input type="radio" name="trackMode" value="pitch" checked onchange="changeMode('pitch')">
-                    ↕ 上下モード (うなずき)
-                </label>
-                <label class="mode-label">
-                    <input type="radio" name="trackMode" value="yaw" onchange="changeMode('yaw')">
-                    ↔ 左右モード (首振り)
-                </label>
+            <div class="settings-group">
+                <div class="radio-box">
+                    <div style="width:100%">
+                        <span class="radio-title">操作モード</span>
+                        <div class="radio-options">
+                            <label class="mode-label">
+                                <input type="radio" name="trackMode" value="pitch" checked onchange="changeMode('pitch')">
+                                ↕ 上下
+                            </label>
+                            <label class="mode-label">
+                                <input type="radio" name="trackMode" value="yaw" onchange="changeMode('yaw')">
+                                ↔ 左右
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="radio-box">
+                    <div style="width:100%">
+                        <span class="radio-title">処理負荷設定 (iPad等は軽量推奨)</span>
+                        <div class="radio-options">
+                            <label class="mode-label">
+                                <input type="radio" name="perfMode" value="normal" checked onchange="changePerf('normal')">
+                                通常 (高精度)
+                            </label>
+                            <label class="mode-label">
+                                <input type="radio" name="perfMode" value="light" onchange="changePerf('light')">
+                                軽量 (高速)
+                            </label>
+                        </div>
+                    </div>
+                </div>
             </div>
 
             <div class="slider-row">
@@ -225,7 +269,7 @@
         // --- 設定値 ---
         const SERVICE_UUID = "a6b00001-0eda-4b52-8e2d-9b1c3d4e5f60";
         const DEVICE_NAME_PREFIX = "ArmOneDa-BLE-";
-        const DEAD_BAND = 3; // 不感帯 (±3度)
+        const DEAD_BAND = 3; 
 
         // --- 変数 ---
         let bluetoothDevice;
@@ -233,18 +277,31 @@
         let isBleConnected = false;
         let isControlOn = false;    
         
-        let trackMode = 'pitch'; // 'pitch' or 'yaw'
-        let originRawValue = null;  // 原点となる生の値
+        let trackMode = 'pitch'; 
+        let originRawValue = null;
         let lastSentAngle = -999;   
-        let gain = 1.0;             // デフォルト感度 1.0
+        let gain = 1.0;
 
-        // --- モード切替 ---
+        // --- 設定変更ロジック ---
         function changeMode(mode) {
             trackMode = mode;
             document.getElementById("modeDisp").innerText = (mode === 'pitch' ? "上下" : "左右");
             if (isControlOn) {
                 stopControlForce();
-                log("モード変更のため停止しました。再度開始してください。");
+                log("モード変更のため停止しました。");
+            }
+        }
+
+        // 処理負荷変更 (軽量版切り替え)
+        function changePerf(mode) {
+            if (mode === 'normal') {
+                faceMesh.setOptions({ refineLandmarks: true }); // 精密
+                document.getElementById("perfDisp").innerText = "通常";
+                log("設定変更: 通常モード (高精度)");
+            } else {
+                faceMesh.setOptions({ refineLandmarks: false }); // 軽量
+                document.getElementById("perfDisp").innerText = "軽量";
+                log("設定変更: 軽量モード (瞳・唇の計算を省略)");
             }
         }
 
@@ -293,20 +350,16 @@
             if (!isBleConnected) return;
 
             if (!isControlOn) {
-                // ONにする
                 isControlOn = true;
-                originRawValue = currentRawValue; // 現在位置を原点に
+                originRawValue = currentRawValue; 
                 lastSentAngle = -999; 
 
                 const btn = document.getElementById("controlBtn");
                 btn.innerText = "制御中 (停止する)";
                 btn.classList.replace("btn-start", "btn-stop-control");
                 log(`制御開始 (${trackMode === 'pitch' ? '上下' : '左右'}): 現在位置を0度に設定`);
-                
                 sendAngleCommand(0); 
-
             } else {
-                // OFFにする
                 stopControlForce();
             }
         }
@@ -355,6 +408,7 @@
             if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
                 const landmarks = results.multiFaceLandmarks[0];
                 
+                // メッシュ描画
                 drawConnectors(canvasCtx, landmarks, FACEMESH_TESSELATION, {color: '#FFFFFF20', lineWidth: 1});
 
                 let rawVal = 0;
@@ -411,7 +465,7 @@
         
         faceMesh.setOptions({
             maxNumFaces: 1,
-            refineLandmarks: true,
+            refineLandmarks: true, // 初期値は通常
             minDetectionConfidence: 0.5,
             minTrackingConfidence: 0.5
         });
