@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>アームワンダAIR フェイス・コントローラ V5</title>
+    <title>アームワンダAIR フェイス・コントローラ V6</title>
     
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
@@ -53,19 +53,29 @@
         /* 映像エリア */
         .video-container {
             position: relative;
-            width: 640px;
+            /* 初期値: 横長 */
+            width: 640px; 
             height: 360px;
             background: #000;
             border-radius: 8px;
             overflow: hidden;
             box-shadow: 0 0 15px rgba(0,0,0,0.5);
             margin-bottom: 20px;
+            cursor: pointer; /* クリックできることを示す */
+            transition: all 0.3s ease; /* スムーズにサイズ変更 */
         }
+        
+        /* スマホ向け縦長クラス (JSで付与) */
+        .video-container.portrait-mode {
+            width: 360px !important;
+            height: 640px !important;
+        }
+
         video {
             position: absolute;
             top: 0; left: 0;
             width: 100%; height: 100%;
-            object-fit: cover;
+            object-fit: cover; /* 枠に合わせてトリミング */
             transform: scaleX(-1);
         }
         canvas {
@@ -86,6 +96,20 @@
             pointer-events: none;
             text-align: left;
             font-size: 14px;
+            z-index: 10;
+        }
+        
+        /* クリック誘導ラベル */
+        .tap-hint {
+            position: absolute;
+            bottom: 10px;
+            right: 10px;
+            font-size: 12px;
+            color: rgba(255,255,255,0.7);
+            background: rgba(0,0,0,0.5);
+            padding: 4px 8px;
+            border-radius: 4px;
+            pointer-events: none;
         }
 
         /* コントロールパネル */
@@ -136,7 +160,7 @@
         }
         @keyframes pulse { 0% {box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.7);} 70% {box-shadow: 0 0 0 10px rgba(220, 53, 69, 0);} 100% {box-shadow: 0 0 0 0 rgba(220, 53, 69, 0);} }
 
-        /* 設定エリア (モード選択など) */
+        /* 設定エリア */
         .settings-group {
             display: flex;
             flex-direction: column;
@@ -201,13 +225,14 @@
         </div>
         <h1 class="app-title">フェイス・コントローラ</h1>
 
-        <div class="video-container">
+        <div class="video-container" id="videoContainer" onclick="toggleAspectRatio()">
             <video id="input_video" autoplay playsinline></video>
             <canvas id="output_canvas" width="640" height="360"></canvas>
             <div class="overlay-info">
                 モード: <span id="modeDisp">上下</span> / <span id="perfDisp">通常</span><br>
                 顔角度: <span id="currentAngleVal">--</span>°
             </div>
+            <div class="tap-hint">タップで縦/横切替</div>
         </div>
 
         <div class="controls">
@@ -236,7 +261,7 @@
 
                 <div class="radio-box">
                     <div style="width:100%">
-                        <span class="radio-title">処理負荷設定 (iPad等は軽量推奨)</span>
+                        <span class="radio-title">処理負荷設定</span>
                         <div class="radio-options">
                             <label class="mode-label">
                                 <input type="radio" name="perfMode" value="normal" checked onchange="changePerf('normal')">
@@ -281,6 +306,28 @@
         let originRawValue = null;
         let lastSentAngle = -999;   
         let gain = 1.0;
+        let isPortrait = false; // 縦横フラグ
+
+        // --- 縦横比切替 ---
+        function toggleAspectRatio() {
+            const container = document.getElementById("videoContainer");
+            const canvas = document.getElementById("output_canvas");
+            
+            isPortrait = !isPortrait;
+
+            if (isPortrait) {
+                // 縦長モード (360x640)
+                container.classList.add("portrait-mode");
+                // 描画キャンバスの内部解像度も変更
+                canvas.width = 360;
+                canvas.height = 640;
+            } else {
+                // 横長モード (640x360)
+                container.classList.remove("portrait-mode");
+                canvas.width = 640;
+                canvas.height = 360;
+            }
+        }
 
         // --- 設定変更ロジック ---
         function changeMode(mode) {
@@ -292,16 +339,15 @@
             }
         }
 
-        // 処理負荷変更 (軽量版切り替え)
         function changePerf(mode) {
             if (mode === 'normal') {
-                faceMesh.setOptions({ refineLandmarks: true }); // 精密
+                faceMesh.setOptions({ refineLandmarks: true });
                 document.getElementById("perfDisp").innerText = "通常";
                 log("設定変更: 通常モード (高精度)");
             } else {
-                faceMesh.setOptions({ refineLandmarks: false }); // 軽量
+                faceMesh.setOptions({ refineLandmarks: false });
                 document.getElementById("perfDisp").innerText = "軽量";
-                log("設定変更: 軽量モード (瞳・唇の計算を省略)");
+                log("設定変更: 軽量モード");
             }
         }
 
@@ -345,7 +391,7 @@
             document.getElementById("controlBtn").classList.remove("active");
         }
 
-        // --- 制御開始/停止 (トグル) ---
+        // --- 制御開始/停止 ---
         function toggleControl() {
             if (!isBleConnected) return;
 
@@ -396,14 +442,17 @@
             await sendCommand(cmd);
         }
 
-        // --- 顔認識ロジック (3D対応版) ---
+        // --- 顔認識ロジック ---
         let currentRawValue = 0; 
 
         function onResults(results) {
-            const canvasCtx = document.getElementById('output_canvas').getContext('2d');
+            const canvasElement = document.getElementById('output_canvas');
+            const canvasCtx = canvasElement.getContext('2d');
+            
             canvasCtx.save();
-            canvasCtx.clearRect(0, 0, 640, 360);
-            canvasCtx.drawImage(results.image, 0, 0, 640, 360);
+            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+            // 映像の描画
+            canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
 
             if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
                 const landmarks = results.multiFaceLandmarks[0];
@@ -434,17 +483,13 @@
 
                 // --- 制御ロジック ---
                 if (isControlOn && originRawValue !== null) {
-                    
                     let diff = 0;
-                    
                     if (trackMode === 'pitch') {
                         diff = (originRawValue - currentRawValue) * 1000 * gain;
                     } else {
                         diff = (originRawValue - currentRawValue) * 1500 * gain; 
                     }
-
                     let angle = Math.round(diff);
-                    
                     if (angle > 180) angle = 180;
                     if (angle < -180) angle = -180;
 
@@ -465,7 +510,7 @@
         
         faceMesh.setOptions({
             maxNumFaces: 1,
-            refineLandmarks: true, // 初期値は通常
+            refineLandmarks: true, 
             minDetectionConfidence: 0.5,
             minTrackingConfidence: 0.5
         });
