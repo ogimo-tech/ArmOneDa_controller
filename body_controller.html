@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>アームワンダAIR ボディコントローラ</title>
+    
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+
+    <style>
+        body {
+            font-family: "Helvetica Neue", Arial, sans-serif;
+            background-color: #222; color: #fff;
+            text-align: center; margin: 0; padding: 20px;
+        }
+        .main-container {
+            display: flex; flex-direction: column; align-items: center;
+            max-width: 800px; margin: 0 auto;
+        }
+        .logo-container { margin-bottom: 10px; }
+        .top-logo { max-width: 280px; height: auto; }
+        
+        h1.app-title {
+            margin: 0 0 25px 0; font-size: 2.2rem; color: #fff; font-weight: 900;
+            letter-spacing: 2px; text-shadow: 0 2px 5px rgba(0,0,0,0.5);
+            border-bottom: 2px solid #555; padding-bottom: 10px; display: inline-block;
+        }
+
+        .video-container {
+            position: relative; width: 640px; height: 360px;
+            background: #000; border-radius: 8px; overflow: hidden;
+            box-shadow: 0 0 15px rgba(0,0,0,0.5); margin-bottom: 20px;
+            cursor: pointer; transition: all 0.3s ease;
+        }
+        .video-container.portrait-mode { width: 360px !important; height: 640px !important; }
+        video, canvas {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            object-fit: cover; transform: scaleX(-1);
+        }
+        .overlay-info {
+            position: absolute; top: 10px; left: 10px;
+            background: rgba(0, 0, 0, 0.6); padding: 8px 12px;
+            border-radius: 4px; font-family: monospace; pointer-events: none;
+            text-align: left; font-size: 14px; z-index: 10;
+        }
+        .tap-hint {
+            position: absolute; bottom: 10px; right: 10px;
+            font-size: 12px; color: rgba(255,255,255,0.7);
+            background: rgba(0,0,0,0.5); padding: 4px 8px;
+            border-radius: 4px; pointer-events: none;
+        }
+
+        .controls {
+            background: #333; padding: 20px; border-radius: 12px;
+            width: 100%; max-width: 640px; box-sizing: border-box;
+        }
+        .btn-group { display: flex; flex-direction: column; gap: 15px; margin-bottom: 20px; }
+        button {
+            padding: 18px 20px; font-size: 18px; border: none; border-radius: 10px;
+            cursor: pointer; font-weight: bold; transition: all 0.2s; width: 100%;
+        }
+        .btn-ble { background-color: #007bff; color: white; }
+        .btn-ble:hover { background-color: #0056b3; }
+        .btn-ble.connected { background-color: #6c757d; }
+        .btn-start { background-color: #28a745; color: white; opacity: 0.5; pointer-events: none; }
+        .btn-start.active { opacity: 1; pointer-events: auto; }
+        .btn-stop-control {
+            background-color: #dc3545; color: white; animation: pulse 2s infinite;
+        }
+        @keyframes pulse { 0% {box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.7);} 70% {box-shadow: 0 0 0 10px rgba(220, 53, 69, 0);} 100% {box-shadow: 0 0 0 0 rgba(220, 53, 69, 0);} }
+
+        .settings-group { display: flex; flex-direction: column; gap: 15px; margin-bottom: 20px; }
+        .radio-box {
+            background: #444; padding: 15px; border-radius: 8px; border: 1px solid #555;
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        .radio-title { font-weight: bold; font-size: 14px; color: #ccc; margin-bottom: 10px; display: block; text-align: left; }
+        .radio-options { display: flex; gap: 10px; justify-content: center; width: 100%; flex-wrap: wrap;}
+        .mode-label { cursor: pointer; display: flex; align-items: center; font-weight: bold; font-size: 14px; margin-right: 5px;}
+        .mode-label input { margin-right: 5px; transform: scale(1.2); }
+
+        .slider-row {
+            display: flex; align-items: center; justify-content: space-between;
+            margin-top: 10px; text-align: left; background: #444;
+            padding: 10px 15px; border-radius: 8px;
+        }
+        input[type=range] { flex: 1; margin: 0 15px; cursor: pointer; }
+        #log { margin-top: 15px; font-size: 12px; color: #888; height: 20px; }
+    </style>
+</head>
+<body>
+
+    <div class="main-container">
+        <div class="logo-container">
+            <img src="armoneda_air_logo_touka.png" alt="アームワンダAIRロゴ" class="top-logo">
+        </div>
+        <h1 class="app-title">ボディコントローラ</h1>
+
+        <div class="video-container" id="videoContainer" onclick="toggleAspectRatio()">
+            <video id="input_video" autoplay playsinline></video>
+            <canvas id="output_canvas" width="640" height="360"></canvas>
+            <div class="overlay-info">
+                モード: <span id="modeDisp">顔:上下</span> / <span id="perfDisp">通常</span><br>
+                角度: <span id="currentAngleVal">--</span>°
+            </div>
+            <div class="tap-hint">タップで縦/横切替</div>
+        </div>
+
+        <div class="controls">
+            <div class="btn-group">
+                <button id="bleBtn" class="btn-ble" onclick="connectBle()">① BLE接続</button>
+                <button id="controlBtn" class="btn-start" onclick="toggleControl()">② アーム制御開始</button>
+            </div>
+
+            <div class="settings-group">
+                <div class="radio-box">
+                    <div style="width:100%">
+                        <span class="radio-title">操作モード</span>
+                        <div class="radio-options">
+                            <label class="mode-label"><input type="radio" name="trackMode" value="pitch" checked onchange="changeMode('pitch')">顔:上下</label>
+                            <label class="mode-label"><input type="radio" name="trackMode" value="yaw" onchange="changeMode('yaw')">顔:左右</label>
+                            <label class="mode-label"><input type="radio" name="trackMode" value="arm_right" onchange="changeMode('arm_right')">腕:右</label>
+                            <label class="mode-label"><input type="radio" name="trackMode" value="arm_left" onchange="changeMode('arm_left')">腕:左</label>
+                        </div>
+                    </div>
+                </div>
+                <div class="radio-box">
+                    <div style="width:100%">
+                        <span class="radio-title">処理負荷設定</span>
+                        <div class="radio-options">
+                            <label class="mode-label"><input type="radio" name="perfMode" value="normal" checked onchange="changePerf('normal')">通常</label>
+                            <label class="mode-label"><input type="radio" name="perfMode" value="light" onchange="changePerf('light')">軽量</label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="slider-row">
+                <label>感度調整 (0.1 - 2.0):</label>
+                <input type="range" min="0.1" max="2.0" step="0.1" value="1.0" oninput="document.getElementById('gainDisp').innerText=this.value; gain=Number(this.value);">
+                <span id="gainDisp">1.0</span>
+            </div>
+            <div id="log">カメラ映像を読み込み中...</div>
+        </div>
+        <p style="font-size: 12px; color: #aaa; margin-top: 20px;">
+            ※制御開始時の位置を「0度」として動作します。
+        </p>
+    </div>
+
+    <script>
+        // --- 設定・変数 ---
+        const SERVICE_UUID = "a6b00001-0eda-4b52-8e2d-9b1c3d4e5f60";
+        const DEVICE_NAME_PREFIX = "ArmOneDa-BLE-";
+        const DEAD_BAND = 3; 
+        let bluetoothDevice, characteristic;
+        let isBleConnected = false, isControlOn = false;    
+        let trackMode = 'pitch', originRawValue = null, lastSentAngle = -999, gain = 1.0, isPortrait = false; 
+        const canvasElement = document.getElementById('output_canvas');
+        const canvasCtx = canvasElement.getContext('2d');
+
+        // --- UI操作 ---
+        function toggleAspectRatio() {
+            const container = document.getElementById("videoContainer");
+            isPortrait = !isPortrait;
+            if (isPortrait) { container.classList.add("portrait-mode"); canvasElement.width=360; canvasElement.height=640; }
+            else { container.classList.remove("portrait-mode"); canvasElement.width=640; canvasElement.height=360; }
+        }
+        function changeMode(mode) {
+            trackMode = mode;
+            let label = "顔:上下";
+            if(mode === 'yaw') label = "顔:左右"; if(mode === 'arm_right') label = "腕:右"; if(mode === 'arm_left') label = "腕:左";
+            document.getElementById("modeDisp").innerText = label;
+            if (isControlOn) { stopControlForce(); log("モード変更のため停止しました。"); }
+        }
+        function changePerf(mode) {
+            const isLight = (mode === 'light');
+            faceMesh.setOptions({ refineLandmarks: !isLight });
+            pose.setOptions({ modelComplexity: isLight ? 0 : 1 });
+            document.getElementById("perfDisp").innerText = isLight ? "軽量" : "通常";
+        }
+
+        // --- BLE ---
+        async function connectBle() {
+            try {
+                log("検索中...");
+                bluetoothDevice = await navigator.bluetooth.requestDevice({ filters: [{ namePrefix: DEVICE_NAME_PREFIX }], optionalServices: [SERVICE_UUID] });
+                bluetoothDevice.addEventListener('gattserverdisconnected', onDisconnected);
+                const server = await bluetoothDevice.gatt.connect();
+                const service = await server.getPrimaryService(SERVICE_UUID);
+                const c = await service.getCharacteristics();
+                characteristic = c.find(c => c.properties.write || c.properties.writeWithoutResponse);
+                if(!characteristic) throw "書込不可";
+                log("接続成功"); isBleConnected = true;
+                document.getElementById("bleBtn").innerText = "接続済み"; document.getElementById("bleBtn").classList.add("connected");
+                document.getElementById("controlBtn").classList.add("active");
+            } catch (e) { log("エラー: " + e); alert("接続失敗"); }
+        }
+        function onDisconnected() {
+            log("切断"); isBleConnected = false; stopControlForce();
+            document.getElementById("bleBtn").innerText = "① BLE接続"; document.getElementById("bleBtn").classList.remove("connected");
+            document.getElementById("controlBtn").classList.remove("active");
+        }
+        async function sendCommand(cmd) {
+            if (!characteristic) return;
+            try { await characteristic.writeValue(new TextEncoder().encode(cmd)); } catch (e) {}
+        }
+        async function sendAngleCommand(angle) {
+            if (Math.abs(angle - lastSentAngle) <= DEAD_BAND) return;
+            lastSentAngle = angle; await sendCommand("#AMOH1AD" + angle + "!");
+        }
+
+        // --- 制御 ---
+        function toggleControl() {
+            if (!isBleConnected) return;
+            if (!isControlOn) {
+                isControlOn = true; originRawValue = currentRawValue; lastSentAngle = -999; 
+                document.getElementById("controlBtn").innerText = "制御中 (停止)"; document.getElementById("controlBtn").classList.replace("btn-start", "btn-stop-control");
+                log("制御開始: 0度設定"); sendAngleCommand(0); 
+            } else { stopControlForce(); }
+        }
+        function stopControlForce() {
+            if (!isControlOn) return;
+            isControlOn = false;
+            document.getElementById("controlBtn").innerText = "② アーム制御開始"; document.getElementById("controlBtn").classList.remove("btn-stop-control"); document.getElementById("controlBtn").classList.add("btn-start");
+            if(isBleConnected) { sendCommand("#AMOH1OFF!"); log("停止送信"); }
+            document.getElementById("currentAngleVal").innerText = "--";
+        }
+
+        // ================= AI ロジック & 描画 =================
+        let currentRawValue = 0; 
+
+        // --- 顔 (FaceMesh) ---
+        function onFaceResults(results) {
+            if (trackMode.startsWith('arm')) return;
+            canvasCtx.save();
+            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+            canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+
+            if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
+                const lm = results.multiFaceLandmarks[0];
+                // 全体は薄く
+                drawConnectors(canvasCtx, lm, FACEMESH_TESSELATION, {color: '#FFFFFF15', lineWidth: 1});
+                
+                // 重要な点だけ強調（シアン色）
+                const keyPoints = [lm[10], lm[152], lm[1], lm[234], lm[454]]; // おでこ,顎,鼻,左耳,右耳
+                for(const p of keyPoints) {
+                    canvasCtx.beginPath(); canvasCtx.arc(p.x * canvasElement.width, p.y * canvasElement.height, 4, 0, 2*Math.PI);
+                    canvasCtx.fillStyle = "#00FFFF"; canvasCtx.fill();
+                }
+
+                let rawVal = 0;
+                if (trackMode === 'pitch') {
+                    const faceH = Math.abs(lm[152].y - lm[10].y);
+                    if (faceH > 0) rawVal = (lm[1].y - lm[10].y) / faceH;
+                } else {
+                    rawVal = (lm[234].z - lm[454].z);
+                }
+                processControl(rawVal);
+            }
+            canvasCtx.restore();
+        }
+
+        // --- 体 (Pose) ---
+        function onPoseResults(results) {
+            if (!trackMode.startsWith('arm')) return;
+            canvasCtx.save();
+            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+            canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+
+            if (results.poseLandmarks) {
+                const lm = results.poseLandmarks;
+                // 全体は薄く
+                drawConnectors(canvasCtx, lm, POSE_CONNECTIONS, {color: '#FFFFFF20', lineWidth: 2});
+                drawLandmarks(canvasCtx, lm, {color: '#FFFFFF20', lineWidth: 1, radius: 3});
+
+                // 操作対象の腕だけ強調（黄色で太く）
+                let targetIdxs = [];
+                if (trackMode === 'arm_right' && lm[12] && lm[16]) targetIdxs = [12, 14, 16]; // 右肩-肘-手首
+                else if (trackMode === 'arm_left' && lm[11] && lm[15]) targetIdxs = [11, 13, 15]; // 左肩-肘-手首
+                
+                if(targetIdxs.length > 0) {
+                    // 線
+                    canvasCtx.beginPath(); canvasCtx.lineWidth = 6; canvasCtx.strokeStyle = "#FFFF00";
+                    canvasCtx.moveTo(lm[targetIdxs[0]].x * canvasElement.width, lm[targetIdxs[0]].y * canvasElement.height);
+                    for(let i=1; i<targetIdxs.length; i++) canvasCtx.lineTo(lm[targetIdxs[i]].x * canvasElement.width, lm[targetIdxs[i]].y * canvasElement.height);
+                    canvasCtx.stroke();
+                    // 点
+                    canvasCtx.fillStyle = "#FFFF00";
+                    for(const idx of targetIdxs) {
+                        canvasCtx.beginPath(); canvasCtx.arc(lm[idx].x * canvasElement.width, lm[idx].y * canvasElement.height, 8, 0, 2*Math.PI); canvasCtx.fill();
+                    }
+                }
+
+                let rawVal = 0;
+                if (trackMode === 'arm_right' && lm[12] && lm[16]) rawVal = (lm[12].y - lm[16].y);
+                else if (trackMode === 'arm_left' && lm[11] && lm[15]) rawVal = (lm[11].y - lm[15].y);
+                
+                processControl(rawVal);
+            }
+            canvasCtx.restore();
+        }
+
+        // --- 共通制御 ---
+        function processControl(rawVal) {
+            currentRawValue = rawVal;
+            if (isControlOn && originRawValue !== null) {
+                let diff = 0;
+                if (trackMode === 'pitch') diff = (originRawValue - currentRawValue) * 1000 * gain;
+                else if (trackMode === 'yaw') diff = (originRawValue - currentRawValue) * 1500 * gain;
+                else diff = (currentRawValue - originRawValue) * 300 * gain;
+                let angle = Math.max(-180, Math.min(180, Math.round(diff)));
+                document.getElementById("currentAngleVal").innerText = angle;
+                sendAngleCommand(angle);
+            } else { document.getElementById("currentAngleVal").innerText = "--"; }
+        }
+
+        // --- 初期化 ---
+        function log(msg) { document.getElementById("log").innerText = msg; }
+        const videoElement = document.getElementById('input_video');
+        const faceMesh = new FaceMesh({locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${f}`});
+        faceMesh.setOptions({maxNumFaces:1, refineLandmarks:true, minDetectionConfidence:0.5, minTrackingConfidence:0.5});
+        faceMesh.onResults(onFaceResults);
+        const pose = new Pose({locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${f}`});
+        pose.setOptions({modelComplexity:1, smoothLandmarks:true, minDetectionConfidence:0.5, minTrackingConfidence:0.5});
+        pose.onResults(onPoseResults);
+        const camera = new Camera(videoElement, {
+            onFrame: async () => { if(trackMode.startsWith('arm')) await pose.send({image:videoElement}); else await faceMesh.send({image:videoElement}); },
+            width: 640, height: 360
+        });
+        camera.start();
+    </script>
+</body>
+</html>
