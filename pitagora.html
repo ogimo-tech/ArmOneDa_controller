@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>アームワンダAIR ピタゴラメーカー V14</title>
+    <title>アームワンダAIR ピタゴラメーカー V16 (Gravity Control)</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
     <style>
         body {
@@ -22,7 +22,7 @@
             padding: 15px; 
             border-bottom-left-radius: 15px;
             display: inline-block;
-            min-width: 250px;
+            min-width: 260px; /* 少し幅を広げました */
         }
         button {
             pointer-events: auto; padding: 8px 16px; font-size: 14px; font-weight: bold;
@@ -32,16 +32,18 @@
             box-shadow: 0 3px 0 #2980b9;
             transition: all 0.1s;
             margin-bottom: 10px;
+            width: 100%; /* ボタン幅いっぱい */
         }
         button:active { transform: translateY(3px); box-shadow: none; }
         button.connected { background-color: #2ecc71; box-shadow: 0 3px 0 #27ae60; }
         
-        .controls { pointer-events: auto; text-align: left; }
-        .control-row { display: flex; align-items: center; justify-content: flex-end; gap: 10px; }
+        .controls { pointer-events: auto; text-align: left; display: flex; flex-direction: column; gap: 8px; }
+        .control-row { display: flex; align-items: center; justify-content: space-between; }
+        .control-row label { font-size: 12px; width: 60px; }
         input[type=range] { width: 120px; accent-color: #3498db; cursor: pointer; }
         
-        .hint { color: #bbb; font-size: 11px; margin-top: 5px; text-align: right; }
-        .val-label { font-family: monospace; font-size: 14px; min-width: 40px; text-align: right;}
+        .hint { color: #bbb; font-size: 11px; margin-top: 10px; text-align: right; }
+        .val-label { font-family: monospace; font-size: 14px; min-width: 45px; text-align: right;}
     </style>
 </head>
 <body>
@@ -52,9 +54,14 @@
             
             <div class="controls">
                 <div class="control-row">
-                    <label for="boostRange" style="font-size:12px">ブースト力</label>
-                    <input type="range" id="boostRange" min="0.1" max="0.5" step="0.1" value="0.5" oninput="updateLabel()">
+                    <label for="boostRange">ブースト</label>
+                    <input type="range" id="boostRange" min="0.1" max="0.5" step="0.1" value="0.5" oninput="updateLabels()">
                     <span id="boostVal" class="val-label">0.5倍</span>
+                </div>
+                <div class="control-row">
+                    <label for="gravityRange">重力</label>
+                    <input type="range" id="gravityRange" min="0.5" max="3.0" step="0.1" value="1.8" oninput="updateGravity()">
+                    <span id="gravityVal" class="val-label">1.8</span>
                 </div>
             </div>
             
@@ -75,7 +82,7 @@
         let currentBall = null; 
         let kaijuComposite = null; 
         let outOfBoundsTimer = 0;
-        let currentBallType = null; // 現在のボールタイプ情報
+        let currentBallType = null; 
 
         // --- Matter.js モジュール ---
         const Engine = Matter.Engine, Render = Matter.Render, Runner = Matter.Runner,
@@ -84,6 +91,9 @@
 
         const engine = Engine.create();
         const world = engine.world;
+        
+        // ★初期重力設定 (スライダーの値から取得)
+        engine.gravity.y = 1.8;
 
         const render = Render.create({
             element: document.body,
@@ -92,21 +102,33 @@
                 width: window.innerWidth,
                 height: window.innerHeight,
                 wireframes: false,
-                background: '#222'
+                background: '#222',
+                pixelRatio: 1 
             }
         });
 
         const AudioContext = window.AudioContext || window.webkitAudioContext;
         const audioCtx = new AudioContext();
 
-        function updateLabel() {
+        // UI更新 & 重力変更関数
+        function updateLabels() {
             document.getElementById('boostVal').innerText = document.getElementById('boostRange').value + "倍";
+        }
+        
+        function updateGravity() {
+            const g = parseFloat(document.getElementById('gravityRange').value);
+            engine.gravity.y = g;
+            document.getElementById('gravityVal').innerText = g.toFixed(1);
         }
 
         // --- ステージ生成 ---
         function createStage() {
             Composite.clear(world);
             Engine.clear(engine);
+            
+            // ★リセット時もスライダーの重力値を適用
+            engine.gravity.y = parseFloat(document.getElementById('gravityRange').value);
+            
             currentBall = null;
             outOfBoundsTimer = 0;
 
@@ -118,34 +140,28 @@
             const wallHeight = h * 5; 
             const wallThickness = 100;
             const wallOpt = { isStatic: true, restitution: 0.5, render: { fillStyle: '#444' } };
-            
             Composite.add(world, [
                 Bodies.rectangle(0, h/2, wallThickness, wallHeight, wallOpt),
                 Bodies.rectangle(w, h/2, wallThickness, wallHeight, wallOpt)
             ]);
 
-            // 2. 床 (受け側はMaxの1.2にしておく)
+            // 2. 床
             const floor = Bodies.rectangle(w/2, h - 10, w, 40, {
                 isStatic: true, restitution: 1.2, label: 'Floor', render: { fillStyle: '#666' }
             });
             Composite.add(world, floor);
 
-            // 3. スロープ (受け側はMaxの1.2にしておく)
+            // 3. スロープ
             const slopeCol = '#2ecc71'; 
             const slopeW = w * 0.75; 
             const slopeAngle = Math.PI * 0.05; 
-            
             const createSlope = (x, y, angle) => {
                 const slope = Bodies.rectangle(x, y, slopeW, 20, { 
-                    isStatic: true, 
-                    angle: angle, 
-                    restitution: 1.2, 
-                    friction: 0,
+                    isStatic: true, angle: angle, restitution: 1.2, friction: 0,
                     render: { fillStyle: slopeCol } 
                 });
                 Composite.add(world, slope);
             };
-
             createSlope(w * 0.3, h * 0.2, slopeAngle);
             createSlope(w * 0.7, h * 0.5, -slopeAngle);
             createSlope(w * 0.3, h * 0.8, slopeAngle);
@@ -231,15 +247,6 @@
             ctx.strokeStyle = "yellow";
             ctx.lineWidth = 2;
             ctx.strokeRect(w - 120, h - 130, 80, 100);
-
-            // ボール情報のデバッグ表示（邪魔なら消してください）
-            /*
-            if(currentBall && currentBallType && !currentBall.isFinished) {
-                ctx.fillStyle = "rgba(255,255,255,0.5)";
-                ctx.font = "12px Arial";
-                ctx.fillText(`Bounce: ${currentBallType.rest}`, currentBall.position.x, currentBall.position.y - 40);
-            }
-            */
         });
 
 
@@ -254,7 +261,7 @@
                 else direction = Vector.normalise(velocity);
 
                 const boostVal = parseFloat(document.getElementById('boostRange').value);
-                const forceMagnitude = currentBall.mass * (boostVal * 0.18); 
+                const forceMagnitude = currentBall.mass * (boostVal * 0.25); 
                 const force = Vector.mult(direction, forceMagnitude);
 
                 Body.applyForce(currentBall, currentBall.position, force);
@@ -270,23 +277,22 @@
             outOfBoundsTimer = 0;
 
             const radius = 30; 
-            
-            // ★ボールの個性定義 (1.0 ± 0.2)
             const types = [
-                { color: '#e74c3c', rest: 1.0, name: 'Red' },    // 標準
-                { color: '#e67e22', rest: 1.1, name: 'Orange' }, // ちょい跳ね
-                { color: '#f1c40f', rest: 0.8, name: 'Yellow' }, // 重い（制御しやすい）
-                { color: '#2ecc71', rest: 1.0, name: 'Green' },  // 標準
-                { color: '#3498db', rest: 0.9, name: 'Blue' },   // ちょい重
-                { color: '#9b59b6', rest: 1.2, name: 'Purple' }, // 超反発！
-                { color: '#ecf0f1', rest: 1.05, name: 'White' }  // ほぼ標準
+                { color: '#e74c3c', rest: 1.0, name: 'Red' },
+                { color: '#e67e22', rest: 1.1, name: 'Orange' },
+                { color: '#f1c40f', rest: 0.8, name: 'Yellow' },
+                { color: '#2ecc71', rest: 1.0, name: 'Green' },
+                { color: '#3498db', rest: 0.9, name: 'Blue' },
+                { color: '#9b59b6', rest: 1.2, name: 'Purple' },
+                { color: '#ecf0f1', rest: 1.05, name: 'White' }
             ];
             const type = types[Math.floor(Math.random() * types.length)];
-            currentBallType = type; // 参照用に保存
+            currentBallType = type;
 
             currentBall = Bodies.circle(x, 50, radius, {
-                restitution: type.rest, // ★個性を適用
+                restitution: type.rest, 
                 density: 0.002, 
+                frictionAir: 0.005, 
                 label: 'Ball',
                 render: { fillStyle: type.color, strokeStyle: '#fff', lineWidth: 3 }
             });
@@ -308,30 +314,24 @@
             }
         }, { passive: false });
 
-        // --- Collision ---
+        // --- Collision, Explosion, Goal, Sound, BLE ---
         Events.on(engine, 'collisionStart', (event) => {
             const pairs = event.pairs;
             for (let i = 0; i < pairs.length; i++) {
                 const bodyA = pairs[i].bodyA;
                 const bodyB = pairs[i].bodyB;
-
                 const getLabel = (body) => body.label || (body.parent && body.parent.label);
                 const check = (l1, l2) => {
                     const la = getLabel(bodyA), lb = getLabel(bodyB);
                     return (la === l1 && lb === l2) || (lb === l1 && la === l2);
                 };
-
-                if (check('Ball', 'Kaiju') || check('Ball', 'KaijuPart')) {
-                    triggerExplosion();
-                }
-
+                if (check('Ball', 'Kaiju') || check('Ball', 'KaijuPart')) triggerExplosion();
                 if (check('Ball', 'GoalSensor')) {
                     if(currentBall && !currentBall.isFinished) triggerGoal();
                 }
             }
         });
 
-        // --- Explosion ---
         function triggerExplosion() {
             if (!currentBall || currentBall.isFinished) return;
             playExplosionSound();
@@ -343,9 +343,7 @@
         function createParticles(x, y, color, count) {
             const particles = [];
             for(let i=0; i<count; i++){
-                const p = Bodies.rectangle(x, y, 15, 15, {
-                    render: { fillStyle: color }, frictionAir: 0.05
-                });
+                const p = Bodies.rectangle(x, y, 15, 15, { render: { fillStyle: color }, frictionAir: 0.05 });
                 Body.setVelocity(p, { x: (Math.random()-0.5)*30, y: (Math.random()-0.5)*30 });
                 particles.push(p);
             }
@@ -353,42 +351,27 @@
             setTimeout(() => Composite.remove(world, particles), 1000);
         }
 
-        // --- Goal ---
         function triggerGoal() {
             if (isGoalActive || !currentBall) return;
             isGoalActive = true;
             currentBall.isFinished = true; 
-
             sendCommand("#AMOS1ON!");
-            
             const audio = document.getElementById("goalSound");
             if (audio) {
                 audio.currentTime = 0;
-                audio.onended = () => {
-                    finishSequence();
-                    audio.onended = null; 
-                };
-                audio.play().catch(e => {
-                    setTimeout(finishSequence, 1000);
-                });
-            } else {
-                setTimeout(finishSequence, 1000);
-            }
-
+                audio.onended = () => { finishSequence(); audio.onended = null; };
+                audio.play().catch(e => { setTimeout(finishSequence, 1000); });
+            } else { setTimeout(finishSequence, 1000); }
             createParticles(currentBall.position.x, currentBall.position.y, '#f1c40f', 20);
             createParticles(currentBall.position.x, currentBall.position.y, '#ffffff', 10);
         }
 
         function finishSequence() {
             sendCommand("#AMOS1OFF!");
-            if (currentBall) { 
-                Composite.remove(world, currentBall); 
-                currentBall = null; 
-            }
+            if (currentBall) { Composite.remove(world, currentBall); currentBall = null; }
             isGoalActive = false;
         }
 
-        // --- Sound ---
         function playPopSound() {
             if (audioCtx.state === 'suspended') audioCtx.resume();
             const osc = audioCtx.createOscillator();
@@ -425,7 +408,6 @@
             osc.start(); osc.stop(audioCtx.currentTime + 0.4);
         }
 
-        // --- BLE ---
         async function connectBle() {
             try {
                 bluetoothDevice = await navigator.bluetooth.requestDevice({
@@ -436,7 +418,6 @@
                 const service = await server.getPrimaryService(SERVICE_UUID);
                 const characteristics = await service.getCharacteristics();
                 characteristic = characteristics.find(c => c.properties.write || c.properties.writeWithoutResponse);
-
                 document.getElementById("bleBtn").innerText = "接続済み";
                 document.getElementById("bleBtn").classList.add("connected");
                 if (audioCtx.state === 'suspended') audioCtx.resume();
