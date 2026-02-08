@@ -2,336 +2,433 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>アームワンダAIR ボディコントローラ</title>
-    
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
-
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>アームワンダAIR ピタゴラメーカー V16 (Gravity Control)</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
     <style>
         body {
-            font-family: "Helvetica Neue", Arial, sans-serif;
-            background-color: #222; color: #fff;
-            text-align: center; margin: 0; padding: 20px;
+            margin: 0; padding: 0; overflow: hidden;
+            background-color: #222; font-family: sans-serif; touch-action: none;
+            color: white;
         }
-        .main-container {
-            display: flex; flex-direction: column; align-items: center;
-            max-width: 800px; margin: 0 auto;
+        #ui-layer {
+            position: absolute; top: 0; right: 0;
+            width: auto;
+            pointer-events: none; z-index: 10; 
+            text-align: right;
         }
-        .logo-container { margin-bottom: 10px; }
-        .top-logo { max-width: 280px; height: auto; }
-        
-        h1.app-title {
-            margin: 0 0 25px 0; font-size: 2.2rem; color: #fff; font-weight: 900;
-            letter-spacing: 2px; text-shadow: 0 2px 5px rgba(0,0,0,0.5);
-            border-bottom: 2px solid #555; padding-bottom: 10px; display: inline-block;
+        .header { 
+            background: rgba(0,0,0,0.8); 
+            padding: 15px; 
+            border-bottom-left-radius: 15px;
+            display: inline-block;
+            min-width: 260px; /* 少し幅を広げました */
         }
-
-        .video-container {
-            position: relative; width: 640px; height: 360px;
-            background: #000; border-radius: 8px; overflow: hidden;
-            box-shadow: 0 0 15px rgba(0,0,0,0.5); margin-bottom: 20px;
-            cursor: pointer; transition: all 0.3s ease;
-        }
-        .video-container.portrait-mode { width: 360px !important; height: 640px !important; }
-        video, canvas {
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            object-fit: cover; transform: scaleX(-1);
-        }
-        .overlay-info {
-            position: absolute; top: 10px; left: 10px;
-            background: rgba(0, 0, 0, 0.6); padding: 8px 12px;
-            border-radius: 4px; font-family: monospace; pointer-events: none;
-            text-align: left; font-size: 14px; z-index: 10;
-        }
-        .tap-hint {
-            position: absolute; bottom: 10px; right: 10px;
-            font-size: 12px; color: rgba(255,255,255,0.7);
-            background: rgba(0,0,0,0.5); padding: 4px 8px;
-            border-radius: 4px; pointer-events: none;
-        }
-
-        .controls {
-            background: #333; padding: 20px; border-radius: 12px;
-            width: 100%; max-width: 640px; box-sizing: border-box;
-        }
-        .btn-group { display: flex; flex-direction: column; gap: 15px; margin-bottom: 20px; }
         button {
-            padding: 18px 20px; font-size: 18px; border: none; border-radius: 10px;
-            cursor: pointer; font-weight: bold; transition: all 0.2s; width: 100%;
+            pointer-events: auto; padding: 8px 16px; font-size: 14px; font-weight: bold;
+            border: none; border-radius: 6px; 
+            background-color: #3498db; 
+            color: white; cursor: pointer;
+            box-shadow: 0 3px 0 #2980b9;
+            transition: all 0.1s;
+            margin-bottom: 10px;
+            width: 100%; /* ボタン幅いっぱい */
         }
-        .btn-ble { background-color: #007bff; color: white; }
-        .btn-ble:hover { background-color: #0056b3; }
-        .btn-ble.connected { background-color: #6c757d; }
-        .btn-start { background-color: #28a745; color: white; opacity: 0.5; pointer-events: none; }
-        .btn-start.active { opacity: 1; pointer-events: auto; }
-        .btn-stop-control {
-            background-color: #dc3545; color: white; animation: pulse 2s infinite;
-        }
-        @keyframes pulse { 0% {box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.7);} 70% {box-shadow: 0 0 0 10px rgba(220, 53, 69, 0);} 100% {box-shadow: 0 0 0 0 rgba(220, 53, 69, 0);} }
-
-        .settings-group { display: flex; flex-direction: column; gap: 15px; margin-bottom: 20px; }
-        .radio-box {
-            background: #444; padding: 15px; border-radius: 8px; border: 1px solid #555;
-            display: flex; justify-content: space-between; align-items: center;
-        }
-        .radio-title { font-weight: bold; font-size: 14px; color: #ccc; margin-bottom: 10px; display: block; text-align: left; }
-        .radio-options { display: flex; gap: 10px; justify-content: center; width: 100%; flex-wrap: wrap;}
-        .mode-label { cursor: pointer; display: flex; align-items: center; font-weight: bold; font-size: 14px; margin-right: 5px;}
-        .mode-label input { margin-right: 5px; transform: scale(1.2); }
-
-        .slider-row {
-            display: flex; align-items: center; justify-content: space-between;
-            margin-top: 10px; text-align: left; background: #444;
-            padding: 10px 15px; border-radius: 8px;
-        }
-        input[type=range] { flex: 1; margin: 0 15px; cursor: pointer; }
-        #log { margin-top: 15px; font-size: 12px; color: #888; height: 20px; }
+        button:active { transform: translateY(3px); box-shadow: none; }
+        button.connected { background-color: #2ecc71; box-shadow: 0 3px 0 #27ae60; }
+        
+        .controls { pointer-events: auto; text-align: left; display: flex; flex-direction: column; gap: 8px; }
+        .control-row { display: flex; align-items: center; justify-content: space-between; }
+        .control-row label { font-size: 12px; width: 60px; }
+        input[type=range] { width: 120px; accent-color: #3498db; cursor: pointer; }
+        
+        .hint { color: #bbb; font-size: 11px; margin-top: 10px; text-align: right; }
+        .val-label { font-family: monospace; font-size: 14px; min-width: 45px; text-align: right;}
     </style>
 </head>
 <body>
 
-    <div class="main-container">
-        <div class="logo-container">
-            <img src="armoneda_air_logo_touka.png" alt="アームワンダAIRロゴ" class="top-logo">
-        </div>
-        <h1 class="app-title">ボディコントローラ</h1>
-
-        <div class="video-container" id="videoContainer" onclick="toggleAspectRatio()">
-            <video id="input_video" autoplay playsinline></video>
-            <canvas id="output_canvas" width="640" height="360"></canvas>
-            <div class="overlay-info">
-                モード: <span id="modeDisp">顔:上下</span> / <span id="perfDisp">通常</span><br>
-                角度: <span id="currentAngleVal">--</span>°
-            </div>
-            <div class="tap-hint">タップで縦/横切替</div>
-        </div>
-
-        <div class="controls">
-            <div class="btn-group">
-                <button id="bleBtn" class="btn-ble" onclick="connectBle()">① BLE接続</button>
-                <button id="controlBtn" class="btn-start" onclick="toggleControl()">② アーム制御開始</button>
-            </div>
-
-            <div class="settings-group">
-                <div class="radio-box">
-                    <div style="width:100%">
-                        <span class="radio-title">操作モード</span>
-                        <div class="radio-options">
-                            <label class="mode-label"><input type="radio" name="trackMode" value="pitch" checked onchange="changeMode('pitch')">顔:上下</label>
-                            <label class="mode-label"><input type="radio" name="trackMode" value="yaw" onchange="changeMode('yaw')">顔:左右</label>
-                            <label class="mode-label"><input type="radio" name="trackMode" value="arm_right" onchange="changeMode('arm_right')">腕:右</label>
-                            <label class="mode-label"><input type="radio" name="trackMode" value="arm_left" onchange="changeMode('arm_left')">腕:左</label>
-                        </div>
-                    </div>
+    <div id="ui-layer">
+        <div class="header">
+            <button id="bleBtn" onclick="connectBle()">① BLE接続</button>
+            
+            <div class="controls">
+                <div class="control-row">
+                    <label for="boostRange">ブースト</label>
+                    <input type="range" id="boostRange" min="0.1" max="0.5" step="0.1" value="0.5" oninput="updateLabels()">
+                    <span id="boostVal" class="val-label">0.5倍</span>
                 </div>
-                <div class="radio-box">
-                    <div style="width:100%">
-                        <span class="radio-title">処理負荷設定</span>
-                        <div class="radio-options">
-                            <label class="mode-label"><input type="radio" name="perfMode" value="normal" checked onchange="changePerf('normal')">通常</label>
-                            <label class="mode-label"><input type="radio" name="perfMode" value="light" onchange="changePerf('light')">軽量</label>
-                        </div>
-                    </div>
+                <div class="control-row">
+                    <label for="gravityRange">重力</label>
+                    <input type="range" id="gravityRange" min="0.5" max="3.0" step="0.1" value="1.8" oninput="updateGravity()">
+                    <span id="gravityVal" class="val-label">1.8</span>
                 </div>
             </div>
-
-            <div class="slider-row">
-                <label>感度調整 (0.1 - 2.0):</label>
-                <input type="range" min="0.1" max="2.0" step="0.1" value="1.0" oninput="document.getElementById('gainDisp').innerText=this.value; gain=Number(this.value);">
-                <span id="gainDisp">1.0</span>
-            </div>
-            <div id="log">カメラ映像を読み込み中...</div>
+            
+            <div class="hint">タップで加速！</div>
         </div>
-        <p style="font-size: 12px; color: #aaa; margin-top: 20px;">
-            ※制御開始時の位置を「0度」として動作します。
-        </p>
     </div>
 
+    <audio id="goalSound" src="pitagora.mp3" preload="auto"></audio>
+
     <script>
-        // --- 設定・変数 ---
+        // --- 設定 ---
         const SERVICE_UUID = "a6b00001-0eda-4b52-8e2d-9b1c3d4e5f60";
         const DEVICE_NAME_PREFIX = "ArmOneDa-BLE-";
-        const DEAD_BAND = 3; 
+        
+        // --- 変数 ---
         let bluetoothDevice, characteristic;
-        let isBleConnected = false, isControlOn = false;    
-        let trackMode = 'pitch', originRawValue = null, lastSentAngle = -999, gain = 1.0, isPortrait = false; 
-        const canvasElement = document.getElementById('output_canvas');
-        const canvasCtx = canvasElement.getContext('2d');
+        let isGoalActive = false; 
+        let currentBall = null; 
+        let kaijuComposite = null; 
+        let outOfBoundsTimer = 0;
+        let currentBallType = null; 
 
-        // --- UI操作 ---
-        function toggleAspectRatio() {
-            const container = document.getElementById("videoContainer");
-            isPortrait = !isPortrait;
-            if (isPortrait) { container.classList.add("portrait-mode"); canvasElement.width=360; canvasElement.height=640; }
-            else { container.classList.remove("portrait-mode"); canvasElement.width=640; canvasElement.height=360; }
+        // --- Matter.js モジュール ---
+        const Engine = Matter.Engine, Render = Matter.Render, Runner = Matter.Runner,
+              Bodies = Matter.Bodies, Composite = Matter.Composite, Events = Matter.Events,
+              Body = Matter.Body, Vector = Matter.Vector;
+
+        const engine = Engine.create();
+        const world = engine.world;
+        
+        // ★初期重力設定 (スライダーの値から取得)
+        engine.gravity.y = 1.8;
+
+        const render = Render.create({
+            element: document.body,
+            engine: engine,
+            options: {
+                width: window.innerWidth,
+                height: window.innerHeight,
+                wireframes: false,
+                background: '#222',
+                pixelRatio: 1 
+            }
+        });
+
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        const audioCtx = new AudioContext();
+
+        // UI更新 & 重力変更関数
+        function updateLabels() {
+            document.getElementById('boostVal').innerText = document.getElementById('boostRange').value + "倍";
         }
-        function changeMode(mode) {
-            trackMode = mode;
-            let label = "顔:上下";
-            if(mode === 'yaw') label = "顔:左右"; if(mode === 'arm_right') label = "腕:右"; if(mode === 'arm_left') label = "腕:左";
-            document.getElementById("modeDisp").innerText = label;
-            if (isControlOn) { stopControlForce(); log("モード変更のため停止しました。"); }
-        }
-        function changePerf(mode) {
-            const isLight = (mode === 'light');
-            faceMesh.setOptions({ refineLandmarks: !isLight });
-            pose.setOptions({ modelComplexity: isLight ? 0 : 1 });
-            document.getElementById("perfDisp").innerText = isLight ? "軽量" : "通常";
+        
+        function updateGravity() {
+            const g = parseFloat(document.getElementById('gravityRange').value);
+            engine.gravity.y = g;
+            document.getElementById('gravityVal').innerText = g.toFixed(1);
         }
 
-        // --- BLE ---
+        // --- ステージ生成 ---
+        function createStage() {
+            Composite.clear(world);
+            Engine.clear(engine);
+            
+            // ★リセット時もスライダーの重力値を適用
+            engine.gravity.y = parseFloat(document.getElementById('gravityRange').value);
+            
+            currentBall = null;
+            outOfBoundsTimer = 0;
+
+            const w = window.innerWidth;
+            const h = window.innerHeight;
+            render.canvas.width = w; render.canvas.height = h;
+
+            // 1. 壁
+            const wallHeight = h * 5; 
+            const wallThickness = 100;
+            const wallOpt = { isStatic: true, restitution: 0.5, render: { fillStyle: '#444' } };
+            Composite.add(world, [
+                Bodies.rectangle(0, h/2, wallThickness, wallHeight, wallOpt),
+                Bodies.rectangle(w, h/2, wallThickness, wallHeight, wallOpt)
+            ]);
+
+            // 2. 床
+            const floor = Bodies.rectangle(w/2, h - 10, w, 40, {
+                isStatic: true, restitution: 1.2, label: 'Floor', render: { fillStyle: '#666' }
+            });
+            Composite.add(world, floor);
+
+            // 3. スロープ
+            const slopeCol = '#2ecc71'; 
+            const slopeW = w * 0.75; 
+            const slopeAngle = Math.PI * 0.05; 
+            const createSlope = (x, y, angle) => {
+                const slope = Bodies.rectangle(x, y, slopeW, 20, { 
+                    isStatic: true, angle: angle, restitution: 1.2, friction: 0,
+                    render: { fillStyle: slopeCol } 
+                });
+                Composite.add(world, slope);
+            };
+            createSlope(w * 0.3, h * 0.2, slopeAngle);
+            createSlope(w * 0.7, h * 0.5, -slopeAngle);
+            createSlope(w * 0.3, h * 0.8, slopeAngle);
+
+            // 4. 怪獣
+            const kx = w * 0.5;
+            const ky = h * 0.5;
+            const scale = 1.5;
+            const partOpt = { render: { fillStyle: '#e74c3c' }, label: 'KaijuPart' };
+            const eyeOpt = { render: { fillStyle: '#fff' }, label: 'KaijuPart' };
+            const hornOpt = { angle: 0, render: { fillStyle: '#f1c40f' }, label: 'KaijuPart' };
+
+            const kBody = Bodies.rectangle(kx, ky, 60 * scale, 50 * scale, partOpt);
+            const kHead = Bodies.circle(kx, ky - 35 * scale, 25 * scale, partOpt);
+            const kEyeL = Bodies.circle(kx - 10 * scale, ky - 35 * scale, 6 * scale, eyeOpt);
+            const kEyeR = Bodies.circle(kx + 10 * scale, ky - 35 * scale, 6 * scale, eyeOpt);
+            const kHornL = Bodies.polygon(kx - 20 * scale, ky - 55 * scale, 3, 10 * scale, { ...hornOpt, angle: -0.5 });
+            const kHornR = Bodies.polygon(kx + 20 * scale, ky - 55 * scale, 3, 10 * scale, { ...hornOpt, angle: 0.5 });
+
+            kaijuComposite = Body.create({
+                parts: [kBody, kHead, kEyeL, kEyeR, kHornL, kHornR],
+                isStatic: true,
+                label: 'Kaiju'
+            });
+            Composite.add(world, kaijuComposite);
+
+            // 5. ゴール
+            const goalSensor = Bodies.rectangle(w - 80, h - 80, 80, 100, {
+                isStatic: true, isSensor: true, label: 'GoalSensor',
+                render: { fillStyle: 'rgba(241, 196, 15, 0.4)' }
+            });
+            Composite.add(world, goalSensor);
+        }
+
+        createStage();
+        Render.run(render);
+        const runner = Runner.create();
+        Runner.run(runner, engine);
+
+        // --- Update ---
+        Events.on(engine, 'beforeUpdate', (event) => {
+            const time = engine.timing.timestamp;
+
+            if (kaijuComposite) {
+                const startY = window.innerHeight * 0.5;
+                const amplitude = 375; 
+                const speed = 0.0004;
+                const py = startY + Math.sin(time * speed) * amplitude;
+                const safeY = Math.max(50, Math.min(window.innerHeight - 50, py));
+                Body.setPosition(kaijuComposite, { x: window.innerWidth * 0.5, y: safeY });
+                Body.setAngle(kaijuComposite, Math.sin(time * 0.001) * 0.1); 
+            }
+
+            if (currentBall && Composite.get(world, currentBall.id, 'body') && !currentBall.isFinished) {
+                const pos = currentBall.position;
+                const buffer = 100;
+                const isOut = pos.y > window.innerHeight + buffer || 
+                              pos.x < -buffer || pos.x > window.innerWidth + buffer ||
+                              pos.y < -buffer * 5;
+
+                if (isOut) {
+                    outOfBoundsTimer += 1000 / 60;
+                    if (outOfBoundsTimer > 5000) { 
+                        Composite.remove(world, currentBall);
+                        currentBall = null; 
+                        outOfBoundsTimer = 0;
+                    }
+                } else {
+                    outOfBoundsTimer = 0;
+                }
+            }
+        });
+
+        Events.on(render, 'afterRender', function() {
+            const ctx = render.context;
+            const w = render.canvas.width;
+            const h = render.canvas.height;
+            
+            ctx.fillStyle = "white";
+            ctx.font = "bold 24px Arial";
+            ctx.textAlign = "center";
+            ctx.fillText("Finish", w - 80, h - 140);
+            ctx.strokeStyle = "yellow";
+            ctx.lineWidth = 2;
+            ctx.strokeRect(w - 120, h - 130, 80, 100);
+        });
+
+
+        // --- Input ---
+        function handleInput(x, y) {
+            if (currentBall && Composite.get(world, currentBall.id, 'body')) {
+                if (currentBall.isFinished) return;
+
+                const velocity = currentBall.velocity;
+                let direction = Vector.create(0, 0);
+                if (Vector.magnitude(velocity) < 0.5) direction = Vector.create(1, 0.5);
+                else direction = Vector.normalise(velocity);
+
+                const boostVal = parseFloat(document.getElementById('boostRange').value);
+                const forceMagnitude = currentBall.mass * (boostVal * 0.25); 
+                const force = Vector.mult(direction, forceMagnitude);
+
+                Body.applyForce(currentBall, currentBall.position, force);
+                playBoostSound();
+
+            } else {
+                spawnBall(x, y);
+            }
+        }
+
+        function spawnBall(x, y) {
+            if (currentBall) Composite.remove(world, currentBall);
+            outOfBoundsTimer = 0;
+
+            const radius = 30; 
+            const types = [
+                { color: '#e74c3c', rest: 1.0, name: 'Red' },
+                { color: '#e67e22', rest: 1.1, name: 'Orange' },
+                { color: '#f1c40f', rest: 0.8, name: 'Yellow' },
+                { color: '#2ecc71', rest: 1.0, name: 'Green' },
+                { color: '#3498db', rest: 0.9, name: 'Blue' },
+                { color: '#9b59b6', rest: 1.2, name: 'Purple' },
+                { color: '#ecf0f1', rest: 1.05, name: 'White' }
+            ];
+            const type = types[Math.floor(Math.random() * types.length)];
+            currentBallType = type;
+
+            currentBall = Bodies.circle(x, 50, radius, {
+                restitution: type.rest, 
+                density: 0.002, 
+                frictionAir: 0.005, 
+                label: 'Ball',
+                render: { fillStyle: type.color, strokeStyle: '#fff', lineWidth: 3 }
+            });
+            currentBall.isFinished = false;
+
+            Composite.add(world, currentBall);
+            playPopSound();
+        }
+
+        document.body.addEventListener('mousedown', (e) => {
+            if(e.target.tagName === 'INPUT' || e.target.tagName === 'BUTTON') return;
+            handleInput(e.clientX, e.clientY);
+        });
+        document.body.addEventListener('touchstart', (e) => {
+            if(e.target.tagName === 'INPUT' || e.target.tagName === 'BUTTON') return;
+            if (e.touches.length > 0) {
+                e.preventDefault();
+                handleInput(e.touches[0].clientX, e.touches[0].clientY);
+            }
+        }, { passive: false });
+
+        // --- Collision, Explosion, Goal, Sound, BLE ---
+        Events.on(engine, 'collisionStart', (event) => {
+            const pairs = event.pairs;
+            for (let i = 0; i < pairs.length; i++) {
+                const bodyA = pairs[i].bodyA;
+                const bodyB = pairs[i].bodyB;
+                const getLabel = (body) => body.label || (body.parent && body.parent.label);
+                const check = (l1, l2) => {
+                    const la = getLabel(bodyA), lb = getLabel(bodyB);
+                    return (la === l1 && lb === l2) || (lb === l1 && la === l2);
+                };
+                if (check('Ball', 'Kaiju') || check('Ball', 'KaijuPart')) triggerExplosion();
+                if (check('Ball', 'GoalSensor')) {
+                    if(currentBall && !currentBall.isFinished) triggerGoal();
+                }
+            }
+        });
+
+        function triggerExplosion() {
+            if (!currentBall || currentBall.isFinished) return;
+            playExplosionSound();
+            createParticles(currentBall.position.x, currentBall.position.y, currentBall.render.fillStyle, 12);
+            Composite.remove(world, currentBall);
+            currentBall = null;
+        }
+
+        function createParticles(x, y, color, count) {
+            const particles = [];
+            for(let i=0; i<count; i++){
+                const p = Bodies.rectangle(x, y, 15, 15, { render: { fillStyle: color }, frictionAir: 0.05 });
+                Body.setVelocity(p, { x: (Math.random()-0.5)*30, y: (Math.random()-0.5)*30 });
+                particles.push(p);
+            }
+            Composite.add(world, particles);
+            setTimeout(() => Composite.remove(world, particles), 1000);
+        }
+
+        function triggerGoal() {
+            if (isGoalActive || !currentBall) return;
+            isGoalActive = true;
+            currentBall.isFinished = true; 
+            sendCommand("#AMOS1ON!");
+            const audio = document.getElementById("goalSound");
+            if (audio) {
+                audio.currentTime = 0;
+                audio.onended = () => { finishSequence(); audio.onended = null; };
+                audio.play().catch(e => { setTimeout(finishSequence, 1000); });
+            } else { setTimeout(finishSequence, 1000); }
+            createParticles(currentBall.position.x, currentBall.position.y, '#f1c40f', 20);
+            createParticles(currentBall.position.x, currentBall.position.y, '#ffffff', 10);
+        }
+
+        function finishSequence() {
+            sendCommand("#AMOS1OFF!");
+            if (currentBall) { Composite.remove(world, currentBall); currentBall = null; }
+            isGoalActive = false;
+        }
+
+        function playPopSound() {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.frequency.setValueAtTime(400, audioCtx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(100, audioCtx.currentTime + 0.1);
+            gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+            gain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.1);
+            osc.connect(gain); gain.connect(audioCtx.destination);
+            osc.start(); osc.stop(audioCtx.currentTime + 0.1);
+        }
+        function playBoostSound() {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(300, audioCtx.currentTime);
+            osc.frequency.linearRampToValueAtTime(500, audioCtx.currentTime + 0.1); 
+            gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+            gain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.1);
+            osc.connect(gain); gain.connect(audioCtx.destination);
+            osc.start(); osc.stop(audioCtx.currentTime + 0.1);
+        }
+        function playExplosionSound() {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(100, audioCtx.currentTime); 
+            osc.frequency.exponentialRampToValueAtTime(10, audioCtx.currentTime + 0.4);
+            gain.gain.setValueAtTime(0.4, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.4);
+            osc.connect(gain); gain.connect(audioCtx.destination);
+            osc.start(); osc.stop(audioCtx.currentTime + 0.4);
+        }
+
         async function connectBle() {
             try {
-                log("検索中...");
-                bluetoothDevice = await navigator.bluetooth.requestDevice({ filters: [{ namePrefix: DEVICE_NAME_PREFIX }], optionalServices: [SERVICE_UUID] });
-                bluetoothDevice.addEventListener('gattserverdisconnected', onDisconnected);
+                bluetoothDevice = await navigator.bluetooth.requestDevice({
+                    filters: [{ namePrefix: DEVICE_NAME_PREFIX }],
+                    optionalServices: [SERVICE_UUID]
+                });
                 const server = await bluetoothDevice.gatt.connect();
                 const service = await server.getPrimaryService(SERVICE_UUID);
-                const c = await service.getCharacteristics();
-                characteristic = c.find(c => c.properties.write || c.properties.writeWithoutResponse);
-                if(!characteristic) throw "書込不可";
-                log("接続成功"); isBleConnected = true;
-                document.getElementById("bleBtn").innerText = "接続済み"; document.getElementById("bleBtn").classList.add("connected");
-                document.getElementById("controlBtn").classList.add("active");
-            } catch (e) { log("エラー: " + e); alert("接続失敗"); }
-        }
-        function onDisconnected() {
-            log("切断"); isBleConnected = false; stopControlForce();
-            document.getElementById("bleBtn").innerText = "① BLE接続"; document.getElementById("bleBtn").classList.remove("connected");
-            document.getElementById("controlBtn").classList.remove("active");
+                const characteristics = await service.getCharacteristics();
+                characteristic = characteristics.find(c => c.properties.write || c.properties.writeWithoutResponse);
+                document.getElementById("bleBtn").innerText = "接続済み";
+                document.getElementById("bleBtn").classList.add("connected");
+                if (audioCtx.state === 'suspended') audioCtx.resume();
+            } catch (error) { alert("接続失敗: " + error); }
         }
         async function sendCommand(cmd) {
             if (!characteristic) return;
             try { await characteristic.writeValue(new TextEncoder().encode(cmd)); } catch (e) {}
         }
-        async function sendAngleCommand(angle) {
-            if (Math.abs(angle - lastSentAngle) <= DEAD_BAND) return;
-            lastSentAngle = angle; await sendCommand("#AMOH1AD" + angle + "!");
-        }
 
-        // --- 制御 ---
-        function toggleControl() {
-            if (!isBleConnected) return;
-            if (!isControlOn) {
-                isControlOn = true; originRawValue = currentRawValue; lastSentAngle = -999; 
-                document.getElementById("controlBtn").innerText = "制御中 (停止)"; document.getElementById("controlBtn").classList.replace("btn-start", "btn-stop-control");
-                log("制御開始: 0度設定"); sendAngleCommand(0); 
-            } else { stopControlForce(); }
-        }
-        function stopControlForce() {
-            if (!isControlOn) return;
-            isControlOn = false;
-            document.getElementById("controlBtn").innerText = "② アーム制御開始"; document.getElementById("controlBtn").classList.remove("btn-stop-control"); document.getElementById("controlBtn").classList.add("btn-start");
-            if(isBleConnected) { sendCommand("#AMOH1OFF!"); log("停止送信"); }
-            document.getElementById("currentAngleVal").innerText = "--";
-        }
-
-        // ================= AI ロジック & 描画 =================
-        let currentRawValue = 0; 
-
-        // --- 顔 (FaceMesh) ---
-        function onFaceResults(results) {
-            if (trackMode.startsWith('arm')) return;
-            canvasCtx.save();
-            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
-            canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
-
-            if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
-                const lm = results.multiFaceLandmarks[0];
-                // 全体は薄く
-                drawConnectors(canvasCtx, lm, FACEMESH_TESSELATION, {color: '#FFFFFF15', lineWidth: 1});
-                
-                // 重要な点だけ強調（シアン色）
-                const keyPoints = [lm[10], lm[152], lm[1], lm[234], lm[454]]; // おでこ,顎,鼻,左耳,右耳
-                for(const p of keyPoints) {
-                    canvasCtx.beginPath(); canvasCtx.arc(p.x * canvasElement.width, p.y * canvasElement.height, 4, 0, 2*Math.PI);
-                    canvasCtx.fillStyle = "#00FFFF"; canvasCtx.fill();
-                }
-
-                let rawVal = 0;
-                if (trackMode === 'pitch') {
-                    const faceH = Math.abs(lm[152].y - lm[10].y);
-                    if (faceH > 0) rawVal = (lm[1].y - lm[10].y) / faceH;
-                } else {
-                    rawVal = (lm[234].z - lm[454].z);
-                }
-                processControl(rawVal);
-            }
-            canvasCtx.restore();
-        }
-
-        // --- 体 (Pose) ---
-        function onPoseResults(results) {
-            if (!trackMode.startsWith('arm')) return;
-            canvasCtx.save();
-            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
-            canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
-
-            if (results.poseLandmarks) {
-                const lm = results.poseLandmarks;
-                // 全体は薄く
-                drawConnectors(canvasCtx, lm, POSE_CONNECTIONS, {color: '#FFFFFF20', lineWidth: 2});
-                drawLandmarks(canvasCtx, lm, {color: '#FFFFFF20', lineWidth: 1, radius: 3});
-
-                // 操作対象の腕だけ強調（黄色で太く）
-                let targetIdxs = [];
-                if (trackMode === 'arm_right' && lm[12] && lm[16]) targetIdxs = [12, 14, 16]; // 右肩-肘-手首
-                else if (trackMode === 'arm_left' && lm[11] && lm[15]) targetIdxs = [11, 13, 15]; // 左肩-肘-手首
-                
-                if(targetIdxs.length > 0) {
-                    // 線
-                    canvasCtx.beginPath(); canvasCtx.lineWidth = 6; canvasCtx.strokeStyle = "#FFFF00";
-                    canvasCtx.moveTo(lm[targetIdxs[0]].x * canvasElement.width, lm[targetIdxs[0]].y * canvasElement.height);
-                    for(let i=1; i<targetIdxs.length; i++) canvasCtx.lineTo(lm[targetIdxs[i]].x * canvasElement.width, lm[targetIdxs[i]].y * canvasElement.height);
-                    canvasCtx.stroke();
-                    // 点
-                    canvasCtx.fillStyle = "#FFFF00";
-                    for(const idx of targetIdxs) {
-                        canvasCtx.beginPath(); canvasCtx.arc(lm[idx].x * canvasElement.width, lm[idx].y * canvasElement.height, 8, 0, 2*Math.PI); canvasCtx.fill();
-                    }
-                }
-
-                let rawVal = 0;
-                if (trackMode === 'arm_right' && lm[12] && lm[16]) rawVal = (lm[12].y - lm[16].y);
-                else if (trackMode === 'arm_left' && lm[11] && lm[15]) rawVal = (lm[11].y - lm[15].y);
-                
-                processControl(rawVal);
-            }
-            canvasCtx.restore();
-        }
-
-        // --- 共通制御 ---
-        function processControl(rawVal) {
-            currentRawValue = rawVal;
-            if (isControlOn && originRawValue !== null) {
-                let diff = 0;
-                if (trackMode === 'pitch') diff = (originRawValue - currentRawValue) * 1000 * gain;
-                else if (trackMode === 'yaw') diff = (originRawValue - currentRawValue) * 1500 * gain;
-                else diff = (currentRawValue - originRawValue) * 300 * gain;
-                let angle = Math.max(-180, Math.min(180, Math.round(diff)));
-                document.getElementById("currentAngleVal").innerText = angle;
-                sendAngleCommand(angle);
-            } else { document.getElementById("currentAngleVal").innerText = "--"; }
-        }
-
-        // --- 初期化 ---
-        function log(msg) { document.getElementById("log").innerText = msg; }
-        const videoElement = document.getElementById('input_video');
-        const faceMesh = new FaceMesh({locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${f}`});
-        faceMesh.setOptions({maxNumFaces:1, refineLandmarks:true, minDetectionConfidence:0.5, minTrackingConfidence:0.5});
-        faceMesh.onResults(onFaceResults);
-        const pose = new Pose({locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${f}`});
-        pose.setOptions({modelComplexity:1, smoothLandmarks:true, minDetectionConfidence:0.5, minTrackingConfidence:0.5});
-        pose.onResults(onPoseResults);
-        const camera = new Camera(videoElement, {
-            onFrame: async () => { if(trackMode.startsWith('arm')) await pose.send({image:videoElement}); else await faceMesh.send({image:videoElement}); },
-            width: 640, height: 360
-        });
-        camera.start();
+        window.addEventListener('resize', createStage);
     </script>
 </body>
 </html>
