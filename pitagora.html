@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>アームワンダAIR ピタゴラメーカー V20 (Corrected Boost)</title>
+    <title>アームワンダAIR ピタゴラメーカー V21 (Repulsion)</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
     <style>
         body {
@@ -54,7 +54,7 @@
             
             <div class="controls">
                 <div class="control-row">
-                    <label for="boostRange">ブースト</label>
+                    <label for="boostRange">反発力</label>
                     <input type="range" id="boostRange" min="0.02" max="0.3" step="0.01" value="0.1" oninput="updateLabels()">
                     <span id="boostVal" class="val-label">0.10倍</span>
                 </div>
@@ -65,7 +65,7 @@
                 </div>
             </div>
             
-            <div class="hint">タップで加速！</div>
+            <div class="hint">タップ位置からボールを弾きます！</div>
         </div>
     </div>
 
@@ -224,7 +224,7 @@
 
                 if (isOut) {
                     outOfBoundsTimer += 1000 / 60;
-                    if (outOfBoundsTimer > 1000) { // 1秒リセット
+                    if (outOfBoundsTimer > 1000) { 
                         Composite.remove(world, currentBall);
                         currentBall = null; 
                         outOfBoundsTimer = 0;
@@ -250,29 +250,65 @@
         });
 
 
-        // --- Input ---
+        // --- Input Logic (Modified) ---
         function handleInput(x, y) {
+            // タップエフェクト (波紋)
+            createTapRipple(x, y);
+
             if (currentBall && Composite.get(world, currentBall.id, 'body')) {
                 if (currentBall.isFinished) return;
 
-                const velocity = currentBall.velocity;
-                let direction = Vector.create(0, 0);
-                if (Vector.magnitude(velocity) < 0.5) direction = Vector.create(1, 0.5);
-                else direction = Vector.normalise(velocity);
+                // ★新ロジック: ボール位置 - タップ位置 = 力の向き
+                const ballPos = currentBall.position;
+                let dx = ballPos.x - x;
+                let dy = ballPos.y - y;
+                
+                // ベクトル生成
+                let forceVector = Vector.create(dx, dy);
+                
+                // 正規化（方向のみ抽出）
+                let direction = Vector.normalise(forceVector);
 
+                // スライダー値取得
                 const boostVal = parseFloat(document.getElementById('boostRange').value);
                 
-                // ★修正: 0.25倍の補正係数を復活！
+                // 力の計算 (0.25倍補正を適用)
                 const forceMagnitude = currentBall.mass * (boostVal * 0.25); 
                 
                 const force = Vector.mult(direction, forceMagnitude);
 
+                // ボールに力を加える
                 Body.applyForce(currentBall, currentBall.position, force);
                 playBoostSound();
 
             } else {
                 spawnBall(x, y);
             }
+        }
+
+        function createTapRipple(x, y) {
+            const circle = Bodies.circle(x, y, 5, {
+                isStatic: true,
+                isSensor: true,
+                render: {
+                    fillStyle: 'transparent',
+                    strokeStyle: 'rgba(255, 255, 255, 0.8)',
+                    lineWidth: 2
+                }
+            });
+            Composite.add(world, circle);
+            
+            // アニメーション用変数
+            let scale = 1;
+            const expandInterval = setInterval(() => {
+                scale += 0.5;
+                Body.scale(circle, 1.2, 1.2);
+                circle.render.opacity -= 0.1;
+                if (scale > 5) {
+                    clearInterval(expandInterval);
+                    Composite.remove(world, circle);
+                }
+            }, 30);
         }
 
         function spawnBall(x, y) {
