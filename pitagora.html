@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>アームワンダAIR ピタゴラメーカー V16 (Gravity Control)</title>
+    <title>アームワンダAIR ピタゴラメーカー V20 (Corrected Boost)</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
     <style>
         body {
@@ -22,7 +22,7 @@
             padding: 15px; 
             border-bottom-left-radius: 15px;
             display: inline-block;
-            min-width: 260px; /* 少し幅を広げました */
+            min-width: 260px;
         }
         button {
             pointer-events: auto; padding: 8px 16px; font-size: 14px; font-weight: bold;
@@ -32,7 +32,7 @@
             box-shadow: 0 3px 0 #2980b9;
             transition: all 0.1s;
             margin-bottom: 10px;
-            width: 100%; /* ボタン幅いっぱい */
+            width: 100%;
         }
         button:active { transform: translateY(3px); box-shadow: none; }
         button.connected { background-color: #2ecc71; box-shadow: 0 3px 0 #27ae60; }
@@ -55,8 +55,8 @@
             <div class="controls">
                 <div class="control-row">
                     <label for="boostRange">ブースト</label>
-                    <input type="range" id="boostRange" min="0.1" max="0.5" step="0.1" value="0.5" oninput="updateLabels()">
-                    <span id="boostVal" class="val-label">0.5倍</span>
+                    <input type="range" id="boostRange" min="0.02" max="0.3" step="0.01" value="0.1" oninput="updateLabels()">
+                    <span id="boostVal" class="val-label">0.10倍</span>
                 </div>
                 <div class="control-row">
                     <label for="gravityRange">重力</label>
@@ -92,7 +92,6 @@
         const engine = Engine.create();
         const world = engine.world;
         
-        // ★初期重力設定 (スライダーの値から取得)
         engine.gravity.y = 1.8;
 
         const render = Render.create({
@@ -110,9 +109,9 @@
         const AudioContext = window.AudioContext || window.webkitAudioContext;
         const audioCtx = new AudioContext();
 
-        // UI更新 & 重力変更関数
         function updateLabels() {
-            document.getElementById('boostVal').innerText = document.getElementById('boostRange').value + "倍";
+            const val = parseFloat(document.getElementById('boostRange').value).toFixed(2);
+            document.getElementById('boostVal').innerText = val + "倍";
         }
         
         function updateGravity() {
@@ -126,7 +125,6 @@
             Composite.clear(world);
             Engine.clear(engine);
             
-            // ★リセット時もスライダーの重力値を適用
             engine.gravity.y = parseFloat(document.getElementById('gravityRange').value);
             
             currentBall = null;
@@ -136,13 +134,15 @@
             const h = window.innerHeight;
             render.canvas.width = w; render.canvas.height = h;
 
-            // 1. 壁
+            // 1. 壁 + 天井
             const wallHeight = h * 5; 
             const wallThickness = 100;
             const wallOpt = { isStatic: true, restitution: 0.5, render: { fillStyle: '#444' } };
+            
             Composite.add(world, [
                 Bodies.rectangle(0, h/2, wallThickness, wallHeight, wallOpt),
-                Bodies.rectangle(w, h/2, wallThickness, wallHeight, wallOpt)
+                Bodies.rectangle(w, h/2, wallThickness, wallHeight, wallOpt),
+                Bodies.rectangle(w/2, -wallThickness/2, w + wallThickness*2, wallThickness, wallOpt)
             ]);
 
             // 2. 床
@@ -188,8 +188,8 @@
             });
             Composite.add(world, kaijuComposite);
 
-            // 5. ゴール
-            const goalSensor = Bodies.rectangle(w - 80, h - 80, 80, 100, {
+            // 5. ゴール (高さ200px)
+            const goalSensor = Bodies.rectangle(w - 80, h - 130, 80, 200, {
                 isStatic: true, isSensor: true, label: 'GoalSensor',
                 render: { fillStyle: 'rgba(241, 196, 15, 0.4)' }
             });
@@ -217,14 +217,14 @@
 
             if (currentBall && Composite.get(world, currentBall.id, 'body') && !currentBall.isFinished) {
                 const pos = currentBall.position;
-                const buffer = 100;
+                const buffer = 50; 
                 const isOut = pos.y > window.innerHeight + buffer || 
                               pos.x < -buffer || pos.x > window.innerWidth + buffer ||
-                              pos.y < -buffer * 5;
+                              pos.y < -buffer * 2;
 
                 if (isOut) {
                     outOfBoundsTimer += 1000 / 60;
-                    if (outOfBoundsTimer > 5000) { 
+                    if (outOfBoundsTimer > 1000) { // 1秒リセット
                         Composite.remove(world, currentBall);
                         currentBall = null; 
                         outOfBoundsTimer = 0;
@@ -243,10 +243,10 @@
             ctx.fillStyle = "white";
             ctx.font = "bold 24px Arial";
             ctx.textAlign = "center";
-            ctx.fillText("Finish", w - 80, h - 140);
+            ctx.fillText("Finish", w - 80, h - 250);
             ctx.strokeStyle = "yellow";
             ctx.lineWidth = 2;
-            ctx.strokeRect(w - 120, h - 130, 80, 100);
+            ctx.strokeRect(w - 120, h - 230, 80, 200);
         });
 
 
@@ -261,7 +261,10 @@
                 else direction = Vector.normalise(velocity);
 
                 const boostVal = parseFloat(document.getElementById('boostRange').value);
+                
+                // ★修正: 0.25倍の補正係数を復活！
                 const forceMagnitude = currentBall.mass * (boostVal * 0.25); 
+                
                 const force = Vector.mult(direction, forceMagnitude);
 
                 Body.applyForce(currentBall, currentBall.position, force);
@@ -314,7 +317,7 @@
             }
         }, { passive: false });
 
-        // --- Collision, Explosion, Goal, Sound, BLE ---
+        // --- Collision ---
         Events.on(engine, 'collisionStart', (event) => {
             const pairs = event.pairs;
             for (let i = 0; i < pairs.length; i++) {
@@ -332,10 +335,12 @@
             }
         });
 
+        // --- Explosion (Healing Sound) ---
         function triggerExplosion() {
             if (!currentBall || currentBall.isFinished) return;
-            playExplosionSound();
-            createParticles(currentBall.position.x, currentBall.position.y, currentBall.render.fillStyle, 12);
+            playHealSound(); 
+            createParticles(currentBall.position.x, currentBall.position.y, '#ffffff', 6);
+            createParticles(currentBall.position.x, currentBall.position.y, '#00ffff', 6);
             Composite.remove(world, currentBall);
             currentBall = null;
         }
@@ -372,6 +377,7 @@
             isGoalActive = false;
         }
 
+        // --- Sound ---
         function playPopSound() {
             if (audioCtx.state === 'suspended') audioCtx.resume();
             const osc = audioCtx.createOscillator();
@@ -395,17 +401,20 @@
             osc.connect(gain); gain.connect(audioCtx.destination);
             osc.start(); osc.stop(audioCtx.currentTime + 0.1);
         }
-        function playExplosionSound() {
+        function playHealSound() {
             if (audioCtx.state === 'suspended') audioCtx.resume();
-            const osc = audioCtx.createOscillator();
-            const gain = audioCtx.createGain();
-            osc.type = 'sawtooth';
-            osc.frequency.setValueAtTime(100, audioCtx.currentTime); 
-            osc.frequency.exponentialRampToValueAtTime(10, audioCtx.currentTime + 0.4);
-            gain.gain.setValueAtTime(0.4, audioCtx.currentTime);
-            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.4);
-            osc.connect(gain); gain.connect(audioCtx.destination);
-            osc.start(); osc.stop(audioCtx.currentTime + 0.4);
+            const t = audioCtx.currentTime;
+            [880, 1108, 1318].forEach((freq, i) => {
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = 'sine'; 
+                osc.frequency.setValueAtTime(freq, t + i * 0.08);
+                gain.gain.setValueAtTime(0.1, t + i * 0.08);
+                gain.gain.exponentialRampToValueAtTime(0.01, t + i * 0.08 + 0.6);
+                osc.connect(gain); gain.connect(audioCtx.destination);
+                osc.start(t + i * 0.08);
+                osc.stop(t + i * 0.08 + 0.6);
+            });
         }
 
         async function connectBle() {
