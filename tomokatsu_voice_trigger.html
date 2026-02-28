@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Voice Trigger for アームワンダAIR</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@1.3.1/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/speech-commands@0.4.0/dist/speech-commands.min.js"></script>
+    <style>
+        body { font-family: "Helvetica Neue", Arial, sans-serif; text-align: center; padding: 20px; max-width: 500px; margin: 0 auto; background-color: #f4f4f9; color: #333; }
+        .status-box { background: #fff; padding: 15px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        #statusText { font-weight: bold; color: #d9534f; }
+        button { padding: 15px 30px; font-size: 16px; font-weight: bold; margin: 10px; border-radius: 8px; cursor: pointer; border: none; color: white; transition: background 0.2s; width: 80%;}
+        button:disabled { background-color: #ccc; cursor: not-allowed; }
+        .btn-connect { background-color: #28a745; }
+        .btn-start { background-color: #007bff; }
+        #logArea { margin-top: 20px; font-size: 11px; color: #666; background: #e9ecef; padding: 10px; border-radius: 4px; height: 100px; overflow-y: scroll; text-align: left; font-family: monospace; }
+        #label-container { margin-top: 15px; font-size: 14px; font-weight: bold; display: flex; justify-content: space-around; flex-wrap: wrap; }
+        #label-container div { padding: 5px 10px; margin: 5px; background: #fff; border-radius: 4px; border: 1px solid #ddd; }
+        
+        #visualizer { width: 100%; height: 100px; background-color: #222; border-radius: 8px; margin-top: 15px; display: block; box-shadow: inset 0 0 10px rgba(0,0,0,0.5); }
+    </style>
+</head>
+<body>
+    <h2>アームワンダAIR<br>ともかつ音声トリガーコントローラ</h2>
+    
+    <div class="status-box">
+        <span id="statusText">未接続</span>
+        <div>
+            <button id="connectBtn" class="btn-connect">1. デバイスと接続</button>
+        </div>
+    </div>
+
+    <button id="startBtn" class="btn-start">2. 音声認識 スタート</button>
+
+    <canvas id="visualizer" width="400" height="100"></canvas>
+
+    <div id="label-container"></div>
+    <div id="logArea">ログ待機中...</div>
+
+    <script>
+        // ★手順1: ここにTeachable Machineで発行されたURLを貼り付けます
+        // 例: "https://teachablemachine.withgoogle.com/models/XXXXXXX/"
+        const URL = "https://teachablemachine.withgoogle.com/models/qMRH6X1ad/";
+
+        // ★手順2: Teachable Machineで設定したトリガー音のクラス名（名前）に合わせます
+        const TRIGGER_CLASS_NAME = "tomokatsu_hee";
+
+        const SERVICE_UUID = "a6b00001-0eda-4b52-8e2d-9b1c3d4e5f60";
+        const DEVICE_NAME_PREFIX = "ArmOneDa-BLE-";
+        
+        let bluetoothDevice;
+        let infoCharacteristic;
+        let isTriggering = false;
+
+        const connectBtn = document.getElementById('connectBtn');
+        const startBtn = document.getElementById('startBtn');
+        const statusText = document.getElementById('statusText');
+        const labelContainer = document.getElementById('label-container');
+        const canvas = document.getElementById('visualizer');
+        const canvasCtx = canvas.getContext('2d');
+
+        function log(text) {
+            const logArea = document.getElementById('logArea');
+            const time = new Date().toLocaleTimeString();
+            logArea.innerHTML = `[${time}] ${text}<br>` + logArea.innerHTML;
+        }
+
+        async function initVisualizer() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                if (audioCtx.state === 'suspended') { await audioCtx.resume(); }
+                const track = stream.getAudioTracks()[0];
+                log("使用マイク: " + track.label);
+
+                const analyser = audioCtx.createAnalyser();
+                const source = audioCtx.createMediaStreamSource(stream);
+                source.connect(analyser);
+
+                analyser.fftSize = 2048;
+                const bufferLength = analyser.frequencyBinCount;
+                const dataArray = new Uint8Array(bufferLength);
+
+                function draw() {
+                    requestAnimationFrame(draw);
+                    analyser.getByteTimeDomainData(dataArray);
+
+                    canvasCtx.fillStyle = '#222';
+                    canvasCtx.fillRect(0, 0, canvas.width, canvas.height);
+                    canvasCtx.lineWidth = 2;
+                    canvasCtx.strokeStyle = '#00ff00';
+                    canvasCtx.beginPath();
+
+                    const sliceWidth = canvas.width * 1.0 / bufferLength;
+                    let x = 0;
+
+                    for (let i = 0; i < bufferLength; i++) {
+                        const v = dataArray[i] / 128.0;
+                        const y = v * canvas.height / 2;
+                        if (i === 0) { canvasCtx.moveTo(x, y); } else { canvasCtx.lineTo(x, y); }
+                        x += sliceWidth;
+                    }
+                    canvasCtx.lineTo(canvas.width, canvas.height / 2);
+                    canvasCtx.stroke();
+                }
+                draw();
+            } catch (err) {
+                console.error("マイクへのアクセスに失敗しました:", err);
+                log("エラー: " + err.message);
+            }
+        }
+
+        connectBtn.addEventListener('click', async () => {
+            try {
+                log("デバイスを検索中...");
+                statusText.innerText = "検索中...";
+                
+                bluetoothDevice = await navigator.bluetooth.requestDevice({
+                    filters: [{ namePrefix: DEVICE_NAME_PREFIX }],
+                    optionalServices: [SERVICE_UUID]
+                });
+                
+                bluetoothDevice.addEventListener('gattserverdisconnected', () => {
+                    statusText.innerText = "切断されました";
+                    statusText.style.color = "#d9534f";
+                    log("BLE切断");
+                });
+
+                const server = await bluetoothDevice.gatt.connect();
+                const service = await server.getPrimaryService(SERVICE_UUID);
+                const characteristics = await service.getCharacteristics();
+                
+                infoCharacteristic = characteristics.find(c => c.properties.write || c.properties.writeWithoutResponse);
+                
+                if (infoCharacteristic) {
+                    statusText.innerText = "接続済み: " + bluetoothDevice.name;
+                    statusText.style.color = "#28a745";
+                    log("接続成功! キャラ取得完了");
+                } else {
+                    throw new Error("書き込み可能なキャラクタリスティックが見つかりません");
+                }
+            } catch (error) {
+                console.error(error);
+                statusText.innerText = "未接続";
+                log("エラー: " + error);
+            }
+        });
+
+        async function sendCommand(cmd) {
+            if (!infoCharacteristic) {
+                log("BLE未接続のため送信スキップ: " + cmd);
+                return;
+            }
+            try {
+                const encoder = new TextEncoder();
+                await infoCharacteristic.writeValue(encoder.encode(cmd));
+                log("送信: " + cmd);
+            } catch (error) {
+                log("送信エラー: " + error);
+            }
+        }
+
+        // AIモデル読み込み関数
+        async function createModel() {
+            if (URL === "<YOUR_MODEL_URL>") {
+                throw new Error("URLが設定されていません。コード内の URL を書き換えてください。");
+            }
+            const checkpointURL = URL + "model.json";
+            const metadataURL = URL + "metadata.json";
+            const recognizer = speechCommands.create("BROWSER_FFT", undefined, checkpointURL, metadataURL);
+            await recognizer.ensureModelLoaded();
+            return recognizer;
+        }
+
+        startBtn.addEventListener('click', async () => {
+            startBtn.disabled = true;
+            startBtn.innerText = "モデル読み込み中...";
+            
+            try {
+                // モデルのロード
+                const recognizer = await createModel();
+                const classLabels = recognizer.wordLabels(); 
+                
+                labelContainer.innerHTML = "";
+                for (let i = 0; i < classLabels.length; i++) {
+                    labelContainer.appendChild(document.createElement("div"));
+                }
+                
+                // 波形表示スタート
+                initVisualizer();
+
+                log("マイク監視を開始しました");
+                startBtn.innerText = "音声認識 稼働中";
+                startBtn.style.backgroundColor = "#6c757d";
+
+                // 音声の継続的な監視
+                recognizer.listen(result => {
+                    const scores = result.scores;
+                    for (let i = 0; i < classLabels.length; i++) {
+                        const classPrediction = classLabels[i] + ": " + (scores[i] * 100).toFixed(0) + "%";
+                        labelContainer.childNodes[i].innerHTML = classPrediction;
+                        
+                        // 設定したクラス名と一致し、確率が80%以上の場合にトリガー
+                        if (classLabels[i] === TRIGGER_CLASS_NAME && scores[i] > 0.80 && !isTriggering) {
+                            executeTrigger();
+                        }
+                    }
+                }, {
+                    includeSpectrogram: true,
+                    probabilityThreshold: 0.75, // 認識の足切りライン
+                    invokeCallbackOnNoiseAndUnknown: true,
+                    overlapFactor: 0.50 // 連続する音声のオーバーラップ判定
+                });
+            } catch (error) {
+                log("エラー: " + error.message);
+                startBtn.disabled = false;
+                startBtn.innerText = "2. 音声認識 スタート";
+            }
+        });
+
+        // トリガー実行関数
+        async function executeTrigger() {
+            isTriggering = true;
+            log("★「" + TRIGGER_CLASS_NAME + "」を検出！動作開始");
+            
+            // 背景色を一瞬変えて視覚的にわかりやすくする
+            document.body.style.backgroundColor = "#ffeeba";
+            
+            await sendCommand('#AMOS1ON!');
+
+            setTimeout(async () => {
+                await sendCommand('#AMOS1OFF!');
+                log("動作終了（待機状態に戻ります）");
+                document.body.style.backgroundColor = "#f4f4f9";
+                
+                setTimeout(() => {
+                    isTriggering = false;
+                }, 1000); // 1秒間のクールダウン
+            }, 3000);
+        }
+    </script>
+</body>
+</html>
