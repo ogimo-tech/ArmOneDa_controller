@@ -248,6 +248,7 @@
                 caps = parseInt(parts[1]) || 0;
                 document.getElementById("versionText").textContent = "ver." + parts[0];
                 updateUI();
+                await loadSettings();
             }
             if (msg.startsWith('#AMOCFGRES:')) {
                 const inner = msg.slice(11, -1);
