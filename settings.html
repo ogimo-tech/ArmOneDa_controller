@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>アームワンダAIR 設定</title>
+    <style>
+        body { font-family: "Helvetica Neue", Arial, sans-serif; max-width: 500px; margin: 0 auto; padding: 20px; background-color: #f4f4f9; color: #333; }
+        .logo-container { text-align: center; margin-bottom: 15px; }
+        .logo-container img { max-width: 100%; height: auto; width: 560px; }
+        h1 { text-align: center; color: #2c3e50; font-size: 1.3rem; margin-bottom: 10px; }
+        h2 { border-bottom: 2px solid #ddd; padding-bottom: 5px; margin-top: 25px; font-size: 1.1rem; color: #555; }
+        .status-box { background: #fff; padding: 15px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); text-align: center; margin-bottom: 20px; }
+        #statusText { font-weight: bold; color: #d9534f; }
+        #versionText { font-size: 0.85rem; color: #777; margin-top: 5px; }
+        button { background-color: #007bff; color: white; border: none; padding: 12px 10px; border-radius: 8px; cursor: pointer; font-size: 15px; font-weight: bold; transition: background 0.2s; touch-action: manipulation; }
+        button:active { transform: scale(0.98); }
+        button:hover { background-color: #0056b3; }
+        button:disabled { background-color: #ccc; cursor: not-allowed; opacity: 0.6; }
+        .btn-connect { background-color: #28a745; width: 100%; }
+        .btn-save { background-color: #e67e22; width: 100%; margin-top: 12px; }
+        .btn-load { background-color: #6c757d; width: 100%; margin-bottom: 15px; }
+        .sw-section { background: #fff; padding: 15px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        .form-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+        .form-row label { font-size: 0.9rem; color: #555; flex: 1; }
+        .form-row select, .form-row input[type=range] { flex: 1.5; font-size: 0.9rem; padding: 4px; border: 1px solid #ccc; border-radius: 4px; }
+        .form-row .range-val { font-size: 0.85rem; font-weight: bold; color: #007bff; width: 60px; text-align: right; }
+        .sub-field { margin-left: 15px; border-left: 3px solid #ddd; padding-left: 10px; }
+        .disabled-row { opacity: 0.5; pointer-events: none; }
+        .hw-note { font-size: 0.8rem; color: #e67e22; background: #fff8e1; padding: 6px 10px; border-radius: 4px; margin-top: 4px; }
+        #logArea { margin-top: 20px; font-size: 11px; color: #666; background: #e9ecef; padding: 10px; border-radius: 4px; height: 80px; overflow-y: scroll; font-family: monospace; margin-bottom: 20px; }
+        .nav-menu { margin-top: 10px; padding: 10px; border-top: 1px solid #ddd; text-align: center; }
+        .nav-menu h3 { font-size: 0.9rem; color: #777; margin-bottom: 8px; font-weight: normal; }
+        .nav-links { display: flex; justify-content: center; gap: 15px; font-size: 0.9rem; }
+        .nav-link { color: #007bff; text-decoration: none; padding: 5px 10px; border: 1px solid #ddd; border-radius: 4px; background: #fff; }
+        .nav-link:hover { background-color: #f0f0f0; }
+    </style>
+</head>
+<body>
+
+    <div class="logo-container">
+        <img src="armoneda_air_logo.png" alt="アームワンダAIR ロゴ">
+    </div>
+
+    <h1>スイッチ設定</h1>
+
+    <div class="status-box">
+        <span id="statusText">未接続</span>
+        <div id="versionText"></div>
+        <div style="margin-top:10px;">
+            <button id="connectBtn" class="btn-connect" onclick="connectDevice()">接続開始</button>
+        </div>
+    </div>
+
+    <div id="controls" style="opacity:0.5;pointer-events:none;">
+
+        <button class="btn-load" onclick="loadSettings()">現在の設定を読込</button>
+
+        <!-- SW1 -->
+        <div class="sw-section">
+            <h2>スイッチ1 設定</h2>
+            <div class="form-row">
+                <label>対象アーム</label>
+                <select id="sw1_arm">
+                    <option value="1">アーム1</option>
+                    <option value="2">アーム2</option>
+                    <option value="3" selected>両方</option>
+                </select>
+            </div>
+            <div class="form-row">
+                <label>モード</label>
+                <select id="sw1_mode" onchange="updateUI()">
+                    <option value="1" selected>単打</option>
+                    <option value="2">連打</option>
+                </select>
+            </div>
+            <div class="form-row">
+                <label>アーム方向</label>
+                <select id="sw1_dir">
+                    <option value="0" selected>正転</option>
+                    <option value="1">逆転</option>
+                </select>
+            </div>
+            <div class="form-row">
+                <label>操作方式</label>
+                <select id="sw1_op" onchange="updateUI()">
+                    <option value="0" selected>押している間ON</option>
+                    <option value="1">ラッチ</option>
+                    <option value="2">タイマー</option>
+                </select>
+            </div>
+            <div id="sw1_timer_row" class="sub-field disabled-row">
+                <div class="form-row">
+                    <label>タイマー時間</label>
+                    <input type="range" id="sw1_timer" min="100" max="10000" step="100" value="1000" oninput="document.getElementById('sw1_timer_val').textContent=this.value+'ms'">
+                    <span id="sw1_timer_val" class="range-val">1000ms</span>
+                </div>
+            </div>
+            <div id="sw1_speed_row" class="sub-field disabled-row">
+                <div class="form-row">
+                    <label>連打速度（半周期）</label>
+                    <input type="range" id="sw1_speed" min="150" max="1000" step="10" value="200" oninput="document.getElementById('sw1_speed_val').textContent=this.value+'ms'">
+                    <span id="sw1_speed_val" class="range-val">200ms</span>
+                </div>
+                <div id="sw1_hw_note" class="hw-note" style="display:none;">連打速度はハードウェアボリュームで制御中です</div>
+            </div>
+            <button class="btn-save" onclick="saveSW(1)">SW1 保存</button>
+        </div>
+
+        <!-- SW2 -->
+        <div class="sw-section">
+            <h2>スイッチ2 設定</h2>
+            <div class="form-row">
+                <label>対象アーム</label>
+                <select id="sw2_arm">
+                    <option value="1">アーム1</option>
+                    <option value="2">アーム2</option>
+                    <option value="3" selected>両方</option>
+                </select>
+            </div>
+            <div class="form-row">
+                <label>モード</label>
+                <select id="sw2_mode" onchange="updateUI()">
+                    <option value="1">単打</option>
+                    <option value="2" selected>連打</option>
+                </select>
+            </div>
+            <div class="form-row">
+                <label>アーム方向</label>
+                <select id="sw2_dir">
+                    <option value="0" selected>正転</option>
+                    <option value="1">逆転</option>
+                </select>
+            </div>
+            <div class="form-row">
+                <label>操作方式</label>
+                <select id="sw2_op" onchange="updateUI()">
+                    <option value="0" selected>押している間ON</option>
+                    <option value="1">ラッチ</option>
+                    <option value="2">タイマー</option>
+                </select>
+            </div>
+            <div id="sw2_timer_row" class="sub-field disabled-row">
+                <div class="form-row">
+                    <label>タイマー時間</label>
+                    <input type="range" id="sw2_timer" min="100" max="10000" step="100" value="1000" oninput="document.getElementById('sw2_timer_val').textContent=this.value+'ms'">
+                    <span id="sw2_timer_val" class="range-val">1000ms</span>
+                </div>
+            </div>
+            <div id="sw2_speed_row" class="sub-field disabled-row">
+                <div class="form-row">
+                    <label>連打速度（半周期）</label>
+                    <input type="range" id="sw2_speed" min="150" max="1000" step="10" value="200" oninput="document.getElementById('sw2_speed_val').textContent=this.value+'ms'">
+                    <span id="sw2_speed_val" class="range-val">200ms</span>
+                </div>
+                <div id="sw2_hw_note" class="hw-note" style="display:none;">連打速度はハードウェアボリュームで制御中です</div>
+            </div>
+            <button class="btn-save" onclick="saveSW(2)">SW2 保存</button>
+        </div>
+
+    </div>
+
+    <div id="logArea">ログ待機中...</div>
+
+    <div class="nav-menu">
+        <h3>Navigation</h3>
+        <div class="nav-links">
+            <a href="index.html" class="nav-link">Webコントローラー</a>
+        </div>
+    </div>
+
+    <script>
+        const SERVICE_UUID  = "a6b00001-0eda-4b52-8e2d-9b1c3d4e5f60";
+        const RX_CHAR_UUID  = "a6b00002-0eda-4b52-8e2d-9b1c3d4e5f60";
+        const TX_CHAR_UUID  = "a6b00003-0eda-4b52-8e2d-9b1c3d4e5f60";
+        const DEVICE_PREFIX = "ArmOneDa-BLE-";
+
+        let bluetoothDevice, rxChar, txChar;
+        let caps = 0;
+
+        function log(text) {
+            const el = document.getElementById('logArea');
+            const t = new Date().toLocaleTimeString();
+            el.innerHTML = `[${t}] ${text}<br>` + el.innerHTML;
+        }
+
+        async function connectDevice() {
+            try {
+                log("検索中...");
+                bluetoothDevice = await navigator.bluetooth.requestDevice({
+                    filters: [{ namePrefix: DEVICE_PREFIX }],
+                    optionalServices: [SERVICE_UUID]
+                });
+                bluetoothDevice.addEventListener('gattserverdisconnected', () => updateUIState(false));
+                const server  = await bluetoothDevice.gatt.connect();
+                const service = await server.getPrimaryService(SERVICE_UUID);
+                rxChar = await service.getCharacteristic(RX_CHAR_UUID);
+                txChar = await service.getCharacteristic(TX_CHAR_UUID);
+                await txChar.startNotifications();
+                txChar.addEventListener('characteristicvaluechanged', onNotify);
+                updateUIState(true);
+                log("接続成功! バージョン取得中...");
+                await sendCommand('#AMOVERGET!');
+            } catch (e) { log("エラー: " + e); }
+        }
+
+        function disconnectDevice() {
+            if (bluetoothDevice && bluetoothDevice.gatt.connected) bluetoothDevice.gatt.disconnect();
+        }
+
+        function updateUIState(isConnected) {
+            const statusText = document.getElementById("statusText");
+            const connectBtn = document.getElementById("connectBtn");
+            const controls   = document.getElementById("controls");
+            if (isConnected) {
+                statusText.innerText = "接続済み: " + bluetoothDevice.name;
+                statusText.style.color = "#28a745";
+                connectBtn.innerText = "切断";
+                connectBtn.onclick = disconnectDevice;
+                controls.style.opacity = "1";
+                controls.style.pointerEvents = "auto";
+            } else {
+                statusText.innerText = "未接続";
+                statusText.style.color = "#d9534f";
+                document.getElementById("versionText").textContent = "";
+                connectBtn.innerText = "接続開始";
+                connectBtn.onclick = connectDevice;
+                controls.style.opacity = "0.5";
+                controls.style.pointerEvents = "none";
+            }
+        }
+
+        function onNotify(event) {
+            const decoder = new TextDecoder();
+            const msg = decoder.decode(event.target.value).trim();
+            log("受信: " + msg);
+            if (msg.startsWith('#AMOVERRES:')) {
+                const inner = msg.slice(11, -1);
+                const parts = inner.split(',');
+                caps = parseInt(parts[1]) || 0;
+                document.getElementById("versionText").textContent = "ver." + parts[0];
+                updateUI();
+            }
+            if (msg.startsWith('#AMOCFGRES:')) {
+                const inner = msg.slice(11, -1);
+                const p = inner.split(',').map(Number);
+                if (p.length >= 12) applyConfig(p);
+            }
+        }
+
+        function applyConfig(p) {
+            setSelectVal('sw1_arm',   p[0]);
+            setSelectVal('sw1_mode',  p[1]);
+            setSelectVal('sw1_dir',   p[2]);
+            setSelectVal('sw1_op',    p[3]);
+            setRangeVal ('sw1_timer', p[4], 'sw1_timer_val', 'ms');
+            setRangeVal ('sw1_speed', p[5], 'sw1_speed_val', 'ms');
+            setSelectVal('sw2_arm',   p[6]);
+            setSelectVal('sw2_mode',  p[7]);
+            setSelectVal('sw2_dir',   p[8]);
+            setSelectVal('sw2_op',    p[9]);
+            setRangeVal ('sw2_timer', p[10], 'sw2_timer_val', 'ms');
+            setRangeVal ('sw2_speed', p[11], 'sw2_speed_val', 'ms');
+            updateUI();
+        }
+
+        function setSelectVal(id, val) { document.getElementById(id).value = val; }
+        function setRangeVal(id, val, labelId, unit) {
+            document.getElementById(id).value = val;
+            document.getElementById(labelId).textContent = val + unit;
+        }
+
+        function updateUI() {
+            for (const sw of [1, 2]) {
+                const mode = parseInt(document.getElementById(`sw${sw}_mode`).value);
+                const op   = parseInt(document.getElementById(`sw${sw}_op`  ).value);
+                const hwVol = (caps & 0x01) !== 0;
+
+                const timerRow = document.getElementById(`sw${sw}_timer_row`);
+                const speedRow = document.getElementById(`sw${sw}_speed_row`);
+                const hwNote   = document.getElementById(`sw${sw}_hw_note`);
+                const speedInput = document.getElementById(`sw${sw}_speed`);
+
+                timerRow.classList.toggle('disabled-row', op  !== 2);
+                speedRow.classList.toggle('disabled-row', mode !== 2);
+
+                if (hwVol && mode === 2) {
+                    hwNote.style.display   = 'block';
+                    speedInput.disabled    = true;
+                    speedInput.style.opacity = '0.5';
+                } else {
+                    hwNote.style.display   = 'none';
+                    speedInput.disabled    = false;
+                    speedInput.style.opacity = '1';
+                }
+            }
+        }
+
+        async function loadSettings() {
+            await sendCommand('#AMOCFGGET!');
+        }
+
+        async function saveSW(sw) {
+            const arm      = document.getElementById(`sw${sw}_arm`  ).value;
+            const mode     = document.getElementById(`sw${sw}_mode` ).value;
+            const dir      = document.getElementById(`sw${sw}_dir`  ).value;
+            const op       = document.getElementById(`sw${sw}_op`   ).value;
+            const timer_ms = document.getElementById(`sw${sw}_timer`).value;
+            const speed_ms = document.getElementById(`sw${sw}_speed`).value;
+            const cmd = `#AMOSW${sw}CFG:${arm},${mode},${dir},${op},${timer_ms},${speed_ms}!`;
+            await sendCommand(cmd);
+            log(`SW${sw} 保存完了`);
+        }
+
+        async function sendCommand(cmd) {
+            if (!bluetoothDevice || !bluetoothDevice.gatt.connected) return;
+            const encoder = new TextEncoder();
+            await rxChar.writeValue(encoder.encode(cmd));
+            log("送信: " + cmd);
+        }
+
+        updateUI();
+    </script>
+</body>
+</html>
