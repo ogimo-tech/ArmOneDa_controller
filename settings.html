@@ -209,10 +209,15 @@
                 const server  = await bluetoothDevice.gatt.connect();
                 const service = await server.getPrimaryService(SERVICE_UUID);
                 rxChar = await service.getCharacteristic(RX_CHAR_UUID);
-                txChar = await service.getCharacteristic(TX_CHAR_UUID);
-                await txChar.startNotifications();
-                log("通知登録完了");
-                txChar.addEventListener('characteristicvaluechanged', onNotify);
+                try {
+                    txChar = await service.getCharacteristic(TX_CHAR_UUID);
+                    await txChar.startNotifications();
+                    log("通知登録完了");
+                    txChar.addEventListener('characteristicvaluechanged', onNotify);
+                } catch (e) {
+                    txChar = null;
+                    log("通知キャラクタリスティック未対応");
+                }
                 updateUIState(true);
                 log("接続成功! バージョン取得中...");
                 await sendVerGet();
