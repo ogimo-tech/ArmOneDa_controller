@@ -136,8 +136,11 @@
         
         <h2>1回振り操作</h2>
         <div class="button-row">
-            <button onclick="sendCommand('#AMOS1ON!')">正転 ON</button>
-            <button onclick="sendCommand('#AMOS1REV!')">逆転 ON</button>
+            <button onmousedown="sendCommand('#AMOS1ON!')"  onmouseup="sendCommand('#AMOS1OFF!')"  onmouseleave="sendCommand('#AMOS1OFF!')"  ontouchstart="event.preventDefault();sendCommand('#AMOS1ON!')"  ontouchend="event.preventDefault();sendCommand('#AMOS1OFF!')">正転 ON</button>
+            <button onmousedown="sendCommand('#AMOS1REV!')" onmouseup="sendCommand('#AMOS1OFF!')"  onmouseleave="sendCommand('#AMOS1OFF!')"  ontouchstart="event.preventDefault();sendCommand('#AMOS1REV!')" ontouchend="event.preventDefault();sendCommand('#AMOS1OFF!')">逆転 ON</button>
+        </div>
+        <div class="button-center">
+            <button onclick="sendCommand('#AMOS1SW!')">ラッチ</button>
         </div>
         <div class="button-center">
             <button class="btn-stop" onclick="sendCommand('#AMOS1OFF!')">OFF</button>
@@ -145,8 +148,11 @@
 
         <h2>連打操作</h2>
         <div class="button-row">
-            <button onclick="sendCommand('#AMOR1ON!')">正転 ON</button>
-            <button onclick="sendCommand('#AMOR1REV!')">逆転 ON</button>
+            <button onmousedown="sendCommand('#AMOR1ON!')"  onmouseup="sendCommand('#AMOR1OFF!')"  onmouseleave="sendCommand('#AMOR1OFF!')"  ontouchstart="event.preventDefault();sendCommand('#AMOR1ON!')"  ontouchend="event.preventDefault();sendCommand('#AMOR1OFF!')">正転 ON</button>
+            <button onmousedown="sendCommand('#AMOR1REV!')" onmouseup="sendCommand('#AMOR1OFF!')"  onmouseleave="sendCommand('#AMOR1OFF!')"  ontouchstart="event.preventDefault();sendCommand('#AMOR1REV!')" ontouchend="event.preventDefault();sendCommand('#AMOR1OFF!')">逆転 ON</button>
+        </div>
+        <div class="button-center">
+            <button onclick="sendCommand('#AMOR1SW!')">ラッチ</button>
         </div>
         <div class="button-center">
             <button class="btn-stop" onclick="sendCommand('#AMOR1OFF!')">OFF</button>
@@ -176,8 +182,7 @@
         <h3>Other Controllers</h3>
         <div class="nav-links">
             <a href="body_controller.html" class="nav-link">ボディコントローラ</a>
-            <a href="pitagora.html" class="nav-link">ピタゴラゲーム</a>
-            <a href="settings.html" class="nav-link">設定</a>
+            <a href="settings.html" class="nav-link">スイッチ設定変更アプリ</a>
         </div>
     </div>
 
