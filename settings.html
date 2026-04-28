@@ -96,15 +96,15 @@
             <div id="sw1_timer_row" class="sub-field disabled-row">
                 <div class="form-row">
                     <label>タイマー時間</label>
-                    <input type="range" id="sw1_timer" min="100" max="10000" step="100" value="1000" oninput="document.getElementById('sw1_timer_val').textContent=this.value+'ms'">
-                    <span id="sw1_timer_val" class="range-val">1000ms</span>
+                    <input type="range" id="sw1_timer" min="100" max="10000" step="100" value="1000" oninput="document.getElementById('sw1_timer_val').textContent=formatMs(this.value)">
+                    <span id="sw1_timer_val" class="range-val">1秒</span>
                 </div>
             </div>
             <div id="sw1_speed_row" class="sub-field disabled-row">
                 <div class="form-row">
                     <label>連打速度（半周期）</label>
                     <input type="range" id="sw1_speed" min="0" max="1000" step="10" value="200" oninput="updateSpeedDisplay('sw1_speed_val', this.value)">
-                    <span id="sw1_speed_val" class="range-val">200ms</span>
+                    <span id="sw1_speed_val" class="range-val">0.2秒</span>
                 </div>
                 <div id="sw1_hw_note" class="hw-note" style="display:none;">連打速度はハードウェアボリュームで制御中です</div>
             </div>
@@ -147,15 +147,15 @@
             <div id="sw2_timer_row" class="sub-field disabled-row">
                 <div class="form-row">
                     <label>タイマー時間</label>
-                    <input type="range" id="sw2_timer" min="100" max="10000" step="100" value="1000" oninput="document.getElementById('sw2_timer_val').textContent=this.value+'ms'">
-                    <span id="sw2_timer_val" class="range-val">1000ms</span>
+                    <input type="range" id="sw2_timer" min="100" max="10000" step="100" value="1000" oninput="document.getElementById('sw2_timer_val').textContent=formatMs(this.value)">
+                    <span id="sw2_timer_val" class="range-val">1秒</span>
                 </div>
             </div>
             <div id="sw2_speed_row" class="sub-field disabled-row">
                 <div class="form-row">
                     <label>連打速度（半周期）</label>
                     <input type="range" id="sw2_speed" min="0" max="1000" step="10" value="200" oninput="updateSpeedDisplay('sw2_speed_val', this.value)">
-                    <span id="sw2_speed_val" class="range-val">200ms</span>
+                    <span id="sw2_speed_val" class="range-val">0.2秒</span>
                 </div>
                 <div id="sw2_hw_note" class="hw-note" style="display:none;">連打速度はハードウェアボリュームで制御中です</div>
             </div>
@@ -322,32 +322,36 @@
             setSelectVal('sw1_mode',  p[1]);
             setSelectVal('sw1_dir',   p[2]);
             setSelectVal('sw1_op',    p[3]);
-            setRangeVal ('sw1_timer', p[4], 'sw1_timer_val', 'ms');
+            setRangeVal ('sw1_timer', p[4], 'sw1_timer_val');
             setSpeedVal ('sw1_speed', p[5], 'sw1_speed_val');
             setSelectVal('sw2_arm',   p[6]);
             setSelectVal('sw2_mode',  p[7]);
             setSelectVal('sw2_dir',   p[8]);
             setSelectVal('sw2_op',    p[9]);
-            setRangeVal ('sw2_timer', p[10], 'sw2_timer_val', 'ms');
+            setRangeVal ('sw2_timer', p[10], 'sw2_timer_val');
             setSpeedVal ('sw2_speed', p[11], 'sw2_speed_val');
             configLoaded = true;
             setSwControlsEnabled(true);
             updateUI();
         }
 
+        function formatMs(ms) {
+            return parseFloat((ms / 1000).toFixed(2)).toString() + '秒';
+        }
+
         function updateSpeedDisplay(labelId, val) {
-            document.getElementById(labelId).textContent = parseInt(val) <= 140 ? "最速" : val + "ms";
+            document.getElementById(labelId).textContent = parseInt(val) <= 140 ? "最速" : formatMs(val);
         }
 
         function setSpeedVal(id, val, labelId) {
             document.getElementById(id).value = val;
-            document.getElementById(labelId).textContent = parseInt(val) <= 140 ? "最速" : val + "ms";
+            document.getElementById(labelId).textContent = parseInt(val) <= 140 ? "最速" : formatMs(val);
         }
 
         function setSelectVal(id, val) { document.getElementById(id).value = val; }
-        function setRangeVal(id, val, labelId, unit) {
+        function setRangeVal(id, val, labelId) {
             document.getElementById(id).value = val;
-            document.getElementById(labelId).textContent = val + unit;
+            document.getElementById(labelId).textContent = formatMs(val);
         }
 
         function updateUI() {
