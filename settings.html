@@ -20,6 +20,8 @@
         .btn-connect { background-color: #28a745; width: 100%; }
         .btn-save { background-color: #e67e22; width: 100%; margin-top: 12px; }
         .btn-load { background-color: #6c757d; width: 100%; margin-bottom: 15px; }
+        .btn-reset { background-color: #d9534f; width: 100%; margin-top: 12px; }
+        .btn-reset:hover { background-color: #c9302c; }
         .sw-section { background: #fff; padding: 15px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); margin-bottom: 20px; }
         .form-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
         .form-row label { font-size: 0.9rem; color: #555; flex: 1; }
@@ -99,7 +101,7 @@
             <div id="sw1_speed_row" class="sub-field disabled-row">
                 <div class="form-row">
                     <label>連打速度（半周期）</label>
-                    <input type="range" id="sw1_speed" min="150" max="1000" step="10" value="200" oninput="document.getElementById('sw1_speed_val').textContent=this.value+'ms'">
+                    <input type="range" id="sw1_speed" min="0" max="1000" step="10" value="200" oninput="updateSpeedDisplay('sw1_speed_val', this.value)">
                     <span id="sw1_speed_val" class="range-val">200ms</span>
                 </div>
                 <div id="sw1_hw_note" class="hw-note" style="display:none;">連打速度はハードウェアボリュームで制御中です</div>
@@ -150,12 +152,17 @@
             <div id="sw2_speed_row" class="sub-field disabled-row">
                 <div class="form-row">
                     <label>連打速度（半周期）</label>
-                    <input type="range" id="sw2_speed" min="150" max="1000" step="10" value="200" oninput="document.getElementById('sw2_speed_val').textContent=this.value+'ms'">
+                    <input type="range" id="sw2_speed" min="0" max="1000" step="10" value="200" oninput="updateSpeedDisplay('sw2_speed_val', this.value)">
                     <span id="sw2_speed_val" class="range-val">200ms</span>
                 </div>
                 <div id="sw2_hw_note" class="hw-note" style="display:none;">連打速度はハードウェアボリュームで制御中です</div>
             </div>
             <button class="btn-save" onclick="saveSW(2)">SW2 保存</button>
+        </div>
+
+        <!-- 設定リセット -->
+        <div style="margin-top: 20px;">
+            <button class="btn-reset" onclick="resetSettings()">設定をデフォルトにリセット</button>
         </div>
 
     </div>
@@ -176,6 +183,7 @@
         const DEVICE_PREFIX = "ArmOneDa-BLE-";
 
         let bluetoothDevice, rxChar, txChar;
+        let isLoadingSettings = false;
         let caps = 0;
 
         function log(text) {
@@ -230,7 +238,7 @@
             }
         }
 
-        function onNotify(event) {
+        async function onNotify(event) {
             const decoder = new TextDecoder();
             const msg = decoder.decode(event.target.value).trim();
             log("受信: " + msg);
@@ -246,6 +254,12 @@
                 const p = inner.split(',').map(Number);
                 if (p.length >= 12) applyConfig(p);
             }
+            if (msg.startsWith('#AMOCFGRESOK!') && !isLoadingSettings) {
+                isLoadingSettings = true;
+                log("設定リセット完了。設定を再読込中...");
+                await loadSettings();
+                isLoadingSettings = false;
+            }
         }
 
         function applyConfig(p) {
@@ -254,14 +268,23 @@
             setSelectVal('sw1_dir',   p[2]);
             setSelectVal('sw1_op',    p[3]);
             setRangeVal ('sw1_timer', p[4], 'sw1_timer_val', 'ms');
-            setRangeVal ('sw1_speed', p[5], 'sw1_speed_val', 'ms');
+            setSpeedVal ('sw1_speed', p[5], 'sw1_speed_val');
             setSelectVal('sw2_arm',   p[6]);
             setSelectVal('sw2_mode',  p[7]);
             setSelectVal('sw2_dir',   p[8]);
             setSelectVal('sw2_op',    p[9]);
             setRangeVal ('sw2_timer', p[10], 'sw2_timer_val', 'ms');
-            setRangeVal ('sw2_speed', p[11], 'sw2_speed_val', 'ms');
+            setSpeedVal ('sw2_speed', p[11], 'sw2_speed_val');
             updateUI();
+        }
+
+        function updateSpeedDisplay(labelId, val) {
+            document.getElementById(labelId).textContent = parseInt(val) === 0 ? "最速" : val + "ms";
+        }
+
+        function setSpeedVal(id, val, labelId) {
+            document.getElementById(id).value = val;
+            document.getElementById(labelId).textContent = val === 0 ? "最速" : val + "ms";
         }
 
         function setSelectVal(id, val) { document.getElementById(id).value = val; }
@@ -310,6 +333,11 @@
             const cmd = `#AMOSW${sw}CFG:${arm},${mode},${dir},${op},${timer_ms},${speed_ms}!`;
             await sendCommand(cmd);
             log(`SW${sw} 保存完了`);
+        }
+
+        async function resetSettings() {
+            if (!confirm("設定をデフォルトに戻します。よろしいですか？")) return;
+            await sendCommand('#AMOCFGRESET!');
         }
 
         async function sendCommand(cmd) {
