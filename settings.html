@@ -185,6 +185,7 @@
         let bluetoothDevice, rxChar, txChar;
         let isLoadingSettings = false;
         let caps = 0;
+        let verResReceived = false;
 
         function log(text) {
             const el = document.getElementById('logArea');
@@ -209,8 +210,18 @@
                 txChar.addEventListener('characteristicvaluechanged', onNotify);
                 updateUIState(true);
                 log("接続成功! バージョン取得中...");
-                await sendCommand('#AMOVERGET!');
+                await sendVerGet();
             } catch (e) { log("エラー: " + e); }
+        }
+
+        async function sendVerGet() {
+            verResReceived = false;
+            await sendCommand('#AMOVERGET!');
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            if (!verResReceived) {
+                log("応答なし、リトライ...");
+                await sendCommand('#AMOVERGET!');
+            }
         }
 
         function disconnectDevice() {
@@ -244,12 +255,13 @@
             const msg = decoder.decode(event.target.value).trim();
             log("受信: " + msg);
             if (msg.startsWith('#AMOVERRES:')) {
+                verResReceived = true;
                 const inner = msg.slice(11, -1);
                 const parts = inner.split(',');
                 caps = parseInt(parts[1]) || 0;
                 document.getElementById("versionText").textContent = "ver." + parts[0];
                 updateUI();
-                await loadSettings();
+                await sendCommand('#AMOCFGGET!');
             }
             if (msg.startsWith('#AMOCFGRES:')) {
                 const inner = msg.slice(11, -1);
@@ -259,7 +271,7 @@
             if (msg.startsWith('#AMOCFGRESOK!') && !isLoadingSettings) {
                 isLoadingSettings = true;
                 log("設定リセット完了。設定を再読込中...");
-                await loadSettings();
+                await sendCommand('#AMOCFGGET!');
                 isLoadingSettings = false;
             }
         }
@@ -281,12 +293,12 @@
         }
 
         function updateSpeedDisplay(labelId, val) {
-            document.getElementById(labelId).textContent = parseInt(val) === 0 ? "最速" : val + "ms";
+            document.getElementById(labelId).textContent = parseInt(val) <= 140 ? "最速" : val + "ms";
         }
 
         function setSpeedVal(id, val, labelId) {
             document.getElementById(id).value = val;
-            document.getElementById(labelId).textContent = val === 0 ? "最速" : val + "ms";
+            document.getElementById(labelId).textContent = parseInt(val) <= 140 ? "最速" : val + "ms";
         }
 
         function setSelectVal(id, val) { document.getElementById(id).value = val; }
@@ -322,7 +334,7 @@
         }
 
         async function loadSettings() {
-            await sendCommand('#AMOCFGGET!');
+            await sendVerGet();
         }
 
         async function saveSW(sw) {
@@ -331,7 +343,8 @@
             const dir      = document.getElementById(`sw${sw}_dir`  ).value;
             const op       = document.getElementById(`sw${sw}_op`   ).value;
             const timer_ms = document.getElementById(`sw${sw}_timer`).value;
-            const speed_ms = document.getElementById(`sw${sw}_speed`).value;
+            const raw_speed = parseInt(document.getElementById(`sw${sw}_speed`).value);
+            const speed_ms = raw_speed <= 140 ? 0 : raw_speed;
             const cmd = `#AMOSW${sw}CFG:${arm},${mode},${dir},${op},${timer_ms},${speed_ms}!`;
             await sendCommand(cmd);
             log(`SW${sw} 保存完了`);
