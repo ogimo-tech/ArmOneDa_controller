@@ -205,6 +205,7 @@
                 rxChar = await service.getCharacteristic(RX_CHAR_UUID);
                 txChar = await service.getCharacteristic(TX_CHAR_UUID);
                 await txChar.startNotifications();
+                log("通知登録完了");
                 txChar.addEventListener('characteristicvaluechanged', onNotify);
                 updateUIState(true);
                 log("接続成功! バージョン取得中...");
