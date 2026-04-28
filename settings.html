@@ -44,7 +44,7 @@
         <img src="armoneda_air_logo.png" alt="アームワンダAIR ロゴ">
     </div>
 
-    <h1>スイッチ設定</h1>
+    <h1>スイッチ設定変更用Webアプリ</h1>
 
     <div class="status-box">
         <span id="statusText">未接続</span>
@@ -57,6 +57,8 @@
     <div id="controls" style="opacity:0.5;pointer-events:none;">
 
         <button class="btn-load" onclick="loadSettings()">現在の設定を読込</button>
+
+        <div id="swControls" style="opacity:0.5;pointer-events:none;">
 
         <!-- SW1 -->
         <div class="sw-section">
@@ -165,6 +167,8 @@
             <button class="btn-reset" onclick="resetSettings()">設定をデフォルトにリセット</button>
         </div>
 
+        </div><!-- /swControls -->
+
     </div>
 
     <div id="logArea">ログ待機中...</div>
@@ -186,6 +190,7 @@
         let isLoadingSettings = false;
         let caps = 0;
         let verResReceived = false;
+        let configLoaded = false;
 
         function log(text) {
             const el = document.getElementById('logArea');
@@ -221,7 +226,17 @@
             if (!verResReceived) {
                 log("応答なし、リトライ...");
                 await sendCommand('#AMOVERGET!');
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                if (!verResReceived) {
+                    document.getElementById("versionText").textContent = "Ver ---  (スイッチ設定未対応版)";
+                }
             }
+        }
+
+        function setSwControlsEnabled(enabled) {
+            const el = document.getElementById('swControls');
+            el.style.opacity = enabled ? '1' : '0.5';
+            el.style.pointerEvents = enabled ? 'auto' : 'none';
         }
 
         function disconnectDevice() {
@@ -247,6 +262,8 @@
                 connectBtn.onclick = connectDevice;
                 controls.style.opacity = "0.5";
                 controls.style.pointerEvents = "none";
+                configLoaded = false;
+                setSwControlsEnabled(false);
             }
         }
 
@@ -289,6 +306,8 @@
             setSelectVal('sw2_op',    p[9]);
             setRangeVal ('sw2_timer', p[10], 'sw2_timer_val', 'ms');
             setSpeedVal ('sw2_speed', p[11], 'sw2_speed_val');
+            configLoaded = true;
+            setSwControlsEnabled(true);
             updateUI();
         }
 
