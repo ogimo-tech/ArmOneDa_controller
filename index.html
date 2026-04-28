@@ -202,11 +202,19 @@
 
         async function connectDevice() {
             try {
-                log("検索中...");
-                bluetoothDevice = await navigator.bluetooth.requestDevice({
-                    filters: [{ namePrefix: DEVICE_NAME_PREFIX }],
-                    optionalServices: [SERVICE_UUID]
-                });
+                bluetoothDevice = null;
+                if (navigator.bluetooth.getDevices) {
+                    const devices = await navigator.bluetooth.getDevices();
+                    bluetoothDevice = devices.find(d => d.name && d.name.startsWith(DEVICE_NAME_PREFIX)) || null;
+                    if (bluetoothDevice) log("既知のデバイスへ接続中...");
+                }
+                if (!bluetoothDevice) {
+                    log("デバイスを選択してください...");
+                    bluetoothDevice = await navigator.bluetooth.requestDevice({
+                        filters: [{ namePrefix: DEVICE_NAME_PREFIX }],
+                        optionalServices: [SERVICE_UUID]
+                    });
+                }
                 bluetoothDevice.addEventListener('gattserverdisconnected', () => updateUIState(false));
                 let server;
                 for (let i = 0; i < 3; i++) {
