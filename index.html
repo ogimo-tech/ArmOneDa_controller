@@ -280,4 +280,39 @@
                 area.classList.remove("slider-disabled");
                 slider.disabled = false;
                 await sendAngleCommand(slider.value, true);
-            } else
+            } else {
+                await sendCommand("#AMOH1OFF!");
+                area.classList.add("slider-disabled");
+                slider.disabled = true;
+                slider.value = 0;
+                document.getElementById("currentAngleDisplay").innerText = 0;
+                lastSentAngle = null;
+                if(throttleTimer) clearTimeout(throttleTimer);
+            }
+        }
+
+        function onSliderMove(val) {
+            document.getElementById("currentAngleDisplay").innerText = val;
+            const now = Date.now();
+            const diff = Math.abs(val - (lastSentAngle || 0));
+            if (now - lastSendTime >= SEND_INTERVAL && diff >= MIN_ANGLE_CHANGE) {
+                sendAngleCommand(val);
+                if (throttleTimer) clearTimeout(throttleTimer);
+            } else {
+                if (throttleTimer) clearTimeout(throttleTimer);
+                throttleTimer = setTimeout(() => {
+                    const cur = document.getElementById("angleSlider").value;
+                    if (Math.abs(cur - (lastSentAngle || 0)) >= MIN_ANGLE_CHANGE) sendAngleCommand(cur);
+                }, SEND_INTERVAL);
+            }
+        }
+
+        async function sendAngleCommand(val, force = false) {
+            if (!force && (val === lastSentAngle || isSending)) return;
+            lastSentAngle = val;
+            lastSendTime = Date.now();
+            await sendCommand("#AMOH1AD" + val + "!");
+        }
+    </script>
+</body>
+</html>
