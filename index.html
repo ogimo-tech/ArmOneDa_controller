@@ -208,7 +208,18 @@
                     optionalServices: [SERVICE_UUID]
                 });
                 bluetoothDevice.addEventListener('gattserverdisconnected', () => updateUIState(false));
-                const server = await bluetoothDevice.gatt.connect();
+                let server;
+                for (let i = 0; i < 3; i++) {
+                    try {
+                        server = await bluetoothDevice.gatt.connect();
+                        break;
+                    } catch (e) {
+                        if (i < 2) {
+                            log("接続リトライ中...");
+                            await new Promise(r => setTimeout(r, 1000));
+                        } else { throw e; }
+                    }
+                }
                 const service = await server.getPrimaryService(SERVICE_UUID);
                 const characteristics = await service.getCharacteristics();
                 infoCharacteristic = characteristics.find(c => c.properties.write || c.properties.writeWithoutResponse);
