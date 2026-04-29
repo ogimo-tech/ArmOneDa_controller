@@ -39,6 +39,7 @@
             margin-bottom: 20px;
         }
         #statusText { font-weight: bold; color: #d9534f; }
+        #versionText { font-size: 0.85rem; color: #777; margin-top: 5px; }
         button {
             background-color: #007bff;
             color: white;
@@ -129,6 +130,7 @@
 
     <div class="status-box">
         <span id="statusText">未接続</span>
+        <div id="versionText"></div>
         <div style="margin-top:10px;">
             <button id="connectBtn" class="btn-connect" onclick="connectDevice()">接続開始</button>
         </div>
@@ -190,6 +192,7 @@
 
     <script>
         const SERVICE_UUID = "a6b00001-0eda-4b52-8e2d-9b1c3d4e5f60";
+        const TX_CHAR_UUID = "a6b00003-0eda-4b52-8e2d-9b1c3d4e5f60";
         const DEVICE_NAME_PREFIX = "ArmOneDa-BLE-";
         const SEND_INTERVAL = 200;
         const MIN_ANGLE_CHANGE = 3;
@@ -238,8 +241,14 @@
                 const service = await server.getPrimaryService(SERVICE_UUID);
                 const characteristics = await service.getCharacteristics();
                 infoCharacteristic = characteristics.find(c => c.properties.write || c.properties.writeWithoutResponse);
+                try {
+                    const txChar = await service.getCharacteristic(TX_CHAR_UUID);
+                    await txChar.startNotifications();
+                    txChar.addEventListener('characteristicvaluechanged', onNotify);
+                } catch (e) { /* 旧ファームウェアは TX なし */ }
                 updateUIState(true);
                 log("接続成功!");
+                await sendCommand('#AMOVERGET!');
             } catch (error) {
                 log("エラー: " + error);
             }
@@ -263,10 +272,19 @@
             } else {
                 statusText.innerText = "未接続";
                 statusText.style.color = "#d9534f";
+                document.getElementById("versionText").textContent = "";
                 connectBtn.innerText = "接続開始";
                 connectBtn.onclick = connectDevice;
                 controls.style.opacity = "0.5";
                 controls.style.pointerEvents = "none";
+            }
+        }
+
+        function onNotify(event) {
+            const msg = new TextDecoder().decode(event.target.value).trim();
+            if (msg.startsWith('#AMOVERRES:')) {
+                const version = msg.slice(11, -1).split(',')[0];
+                document.getElementById("versionText").textContent = "ver." + version;
             }
         }
 
