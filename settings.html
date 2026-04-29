@@ -26,6 +26,14 @@
         .form-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
         .form-row label { font-size: 0.9rem; color: #555; flex: 1; }
         .form-row select, .form-row input[type=range] { flex: 1.5; font-size: 0.9rem; padding: 4px; border: 1px solid #ccc; border-radius: 4px; }
+        .chip-row { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+        .chip-row label { font-size: 0.9rem; color: #555; white-space: nowrap; width: 80px; flex-shrink: 0; }
+        .chip-group { display: flex; gap: 5px; flex: 1; }
+        .chip { flex: 1; min-height: 48px; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #f0f4ff; color: #555; border: 2px solid #c8d8f0; border-radius: 16px; padding: 4px 6px; font-size: 0.82rem; font-weight: bold; cursor: pointer; transition: background 0.15s, color 0.15s, border-color 0.15s; touch-action: manipulation; line-height: 1.3; text-align: center; }
+        .chip:hover { background: #d8e8fc; border-color: #90b8e8; }
+        .chip-active { background: #007bff; color: #fff; border-color: #007bff; }
+        .chip-active:hover { background: #0056b3 !important; border-color: #0056b3 !important; }
+        .chip-sub { font-size: 0.72em; font-weight: normal; display: block; opacity: 0.85; }
         .form-row .range-val { font-size: 0.85rem; font-weight: bold; color: #007bff; width: 60px; text-align: right; }
         .sub-field { margin-left: 15px; border-left: 3px solid #ddd; padding-left: 10px; }
         .disabled-row { opacity: 0.5; pointer-events: none; }
@@ -77,27 +85,20 @@
                     <option value="3" selected>両方</option>
                 </select>
             </div>
-            <div class="form-row">
+            <div class="chip-row">
                 <label>モード</label>
-                <select id="sw1_mode" onchange="updateUI()">
-                    <option value="1" selected>1回振り</option>
-                    <option value="2">連打</option>
-                </select>
+                <div class="chip-group" id="sw1_mode_group"></div>
+                <input type="hidden" id="sw1_mode" value="1">
             </div>
-            <div class="form-row">
+            <div class="chip-row">
                 <label>アーム方向</label>
-                <select id="sw1_dir">
-                    <option value="0" selected>正転</option>
-                    <option value="1">逆転</option>
-                </select>
+                <div class="chip-group" id="sw1_dir_group"></div>
+                <input type="hidden" id="sw1_dir" value="0">
             </div>
-            <div class="form-row">
+            <div class="chip-row">
                 <label>操作方式</label>
-                <select id="sw1_op" onchange="updateUI()">
-                    <option value="0" selected>ホールド（押している間ON）</option>
-                    <option value="1">ラッチ</option>
-                    <option value="2">タイマー</option>
-                </select>
+                <div class="chip-group" id="sw1_op_group"></div>
+                <input type="hidden" id="sw1_op" value="0">
             </div>
             <div id="sw1_timer_row" class="sub-field disabled-row">
                 <div class="form-row">
@@ -128,27 +129,20 @@
                     <option value="3" selected>両方</option>
                 </select>
             </div>
-            <div class="form-row">
+            <div class="chip-row">
                 <label>モード</label>
-                <select id="sw2_mode" onchange="updateUI()">
-                    <option value="1">1回振り</option>
-                    <option value="2" selected>連打</option>
-                </select>
+                <div class="chip-group" id="sw2_mode_group"></div>
+                <input type="hidden" id="sw2_mode" value="2">
             </div>
-            <div class="form-row">
+            <div class="chip-row">
                 <label>アーム方向</label>
-                <select id="sw2_dir">
-                    <option value="0" selected>正転</option>
-                    <option value="1">逆転</option>
-                </select>
+                <div class="chip-group" id="sw2_dir_group"></div>
+                <input type="hidden" id="sw2_dir" value="0">
             </div>
-            <div class="form-row">
+            <div class="chip-row">
                 <label>操作方式</label>
-                <select id="sw2_op" onchange="updateUI()">
-                    <option value="0" selected>ホールド（押している間ON）</option>
-                    <option value="1">ラッチ</option>
-                    <option value="2">タイマー</option>
-                </select>
+                <div class="chip-group" id="sw2_op_group"></div>
+                <input type="hidden" id="sw2_op" value="0">
             </div>
             <div id="sw2_timer_row" class="sub-field disabled-row">
                 <div class="form-row">
@@ -194,7 +188,7 @@
         Google Chrome または Microsoft Edge をご使用ください。</p>
         <p><strong>[iPhone / iPad (iOS)]</strong><br>
         SafariやChromeでは動きません。<br>
-        App Storeから無料アプリ「<a href="https://apps.apple.com/app/bluefy-web-ble-browser/id1492912960" target="_blank">Bluefy</a>」を使い、アプリ内で本サイトを開いてください。</p>
+        App Storeから無料アプリ「<a href="https://apps.apple.com/app/bluefy-web-ble-browser/id1492912960" target="_blank">Bluefy</a>」を使い、本サイトを開いてください。</p>
         <div class="license">© 2026 Ogimo-tech All Rights Reserved.</div>
     </div>
 
@@ -366,7 +360,50 @@
             document.getElementById(labelId).textContent = parseInt(val) <= 140 ? "最速" : formatMs(val);
         }
 
-        function setSelectVal(id, val) { document.getElementById(id).value = val; }
+        const PICKER_OPTS = {
+            sw1_mode: [{v:'1',l:'1回振り'},{v:'2',l:'連打'}],
+            sw1_dir:  [{v:'0',l:'正転'},{v:'1',l:'逆転'}],
+            sw1_op:   [{v:'0',l:'ホールド',sub:'(押している間ON)'},{v:'1',l:'ラッチ'},{v:'2',l:'タイマー'}],
+            sw2_mode: [{v:'1',l:'1回振り'},{v:'2',l:'連打'}],
+            sw2_dir:  [{v:'0',l:'正転'},{v:'1',l:'逆転'}],
+            sw2_op:   [{v:'0',l:'ホールド',sub:'(押している間ON)'},{v:'1',l:'ラッチ'},{v:'2',l:'タイマー'}],
+        };
+
+        function renderChips(id) {
+            const opts = PICKER_OPTS[id];
+            const hidden = document.getElementById(id);
+            const group = document.getElementById(id + '_group');
+            if (!group) return;
+            group.innerHTML = '';
+            opts.forEach((opt, i) => {
+                const btn = document.createElement('button');
+                btn.className = 'chip' + (opt.v === hidden.value ? ' chip-active' : '');
+                if (opt.sub) {
+                    btn.innerHTML = opt.l + '<span class="chip-sub">' + opt.sub + '</span>';
+                } else {
+                    btn.textContent = opt.l;
+                }
+                btn.onclick = () => selectChip(id, i);
+                group.appendChild(btn);
+            });
+        }
+
+        function renderAllChips() {
+            for (const id in PICKER_OPTS) renderChips(id);
+        }
+
+        function selectChip(id, idx) {
+            document.getElementById(id).value = PICKER_OPTS[id][idx].v;
+            renderChips(id);
+            updateUI();
+        }
+
+        function setSelectVal(id, val) {
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.value = String(val);
+            if (PICKER_OPTS[id]) renderChips(id);
+        }
         function setRangeVal(id, val, labelId) {
             document.getElementById(id).value = val;
             document.getElementById(labelId).textContent = formatMs(val);
@@ -427,6 +464,7 @@
             log("送信: " + cmd);
         }
 
+        renderAllChips();
         updateUI();
     </script>
 </body>
