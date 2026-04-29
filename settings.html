@@ -12,7 +12,8 @@
         h2 { border-bottom: 2px solid #ddd; padding-bottom: 5px; margin-top: 25px; font-size: 1.1rem; color: #555; }
         .status-box { background: #fff; padding: 15px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); text-align: center; margin-bottom: 20px; }
         #statusText { font-weight: bold; color: #d9534f; }
-        #versionText { font-size: 0.85rem; color: #777; margin-top: 5px; }
+        .version-row { display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 5px; min-height: 1.3em; }
+        #versionText { font-size: 0.85rem; color: #777; }
         button { background-color: #007bff; color: white; border: none; padding: 12px 10px; border-radius: 8px; cursor: pointer; font-size: 15px; font-weight: bold; transition: background 0.2s; touch-action: manipulation; }
         button:active { transform: scale(0.98); }
         button:hover { background-color: #0056b3; }
@@ -22,6 +23,12 @@
         .btn-load { background-color: #6c757d; width: 100%; margin-bottom: 15px; }
         .btn-reset { background-color: #d9534f; width: 100%; margin-top: 12px; }
         .btn-reset:hover { background-color: #c9302c; }
+        .btn-mode-back { background-color: #e67e22; width: 100%; margin-top: 12px; }
+        .btn-mode-back:hover { background-color: #cf6d17; }
+        .btn-relay-save { background-color: #9b59b6; width: 100%; margin-top: 12px; }
+        .btn-relay-save:hover { background-color: #7d3c98; }
+        .btn-toggle { background-color: #f0f0f0; color: #555; border: 1px solid #ccc; width: 100%; text-align: left; display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; border-radius: 6px; font-size: 0.9rem; font-weight: normal; margin-top: 4px; }
+        .btn-toggle:hover { background-color: #e2e2e2; color: #333; }
         .sw-section { background: #fff; padding: 15px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); margin-bottom: 20px; }
         .form-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
         .form-row label { font-size: 0.9rem; color: #555; flex: 1; }
@@ -38,6 +45,12 @@
         .sub-field { margin-left: 15px; border-left: 3px solid #ddd; padding-left: 10px; }
         .disabled-row { opacity: 0.5; pointer-events: none; }
         .hw-note { font-size: 0.8rem; color: #e67e22; background: #fff8e1; padding: 6px 10px; border-radius: 4px; margin-top: 4px; }
+        .mode-badge { display: inline-block; padding: 2px 10px; border-radius: 10px; font-size: 0.78rem; font-weight: bold; }
+        .mode-badge-ao { background: #d4edda; color: #155724; }
+        .mode-badge-fs { background: #e8d5f5; color: #5b2c7b; }
+        .bt-relay-panel { border-top: 1px solid #eee; margin-top: 12px; padding-top: 12px; }
+        .bt-relay-panel-title { font-size: 0.88rem; font-weight: bold; color: #555; margin-bottom: 10px; }
+        .relay-note { font-size: 0.78rem; color: #155724; background: #d4edda; border: 1px solid #c3e6cb; border-radius: 4px; padding: 8px 10px; margin-top: 10px; line-height: 1.5; }
         #logArea { margin-top: 20px; font-size: 11px; color: #666; background: #e9ecef; padding: 10px; border-radius: 4px; height: 80px; overflow-y: scroll; font-family: monospace; margin-bottom: 20px; }
         .info-section { font-size: 0.8rem; color: #666; background: #fff; border-radius: 8px; padding: 12px 15px; margin-bottom: 15px; border: 1px solid #e0e0e0; }
         .info-section h3 { font-size: 0.85rem; color: #555; margin: 0 0 8px; font-weight: bold; }
@@ -62,7 +75,10 @@
 
     <div class="status-box">
         <span id="statusText">未接続</span>
-        <div id="versionText"></div>
+        <div class="version-row">
+            <span id="versionText"></span>
+            <span id="currentModeBadge" class="mode-badge" style="display:none;"></span>
+        </div>
         <div style="margin-top:10px;">
             <button id="connectBtn" class="btn-connect" onclick="connectDevice()">接続開始</button>
         </div>
@@ -162,12 +178,47 @@
             <button class="btn-save" onclick="saveSW(2)">SW2 保存</button>
         </div>
 
-        <!-- 設定リセット -->
-        <div style="margin-top: 20px;">
-            <button class="btn-reset" onclick="resetSettings()">設定をデフォルトにリセット</button>
+        </div><!-- /swControls -->
+
+        <!-- BLEモード変更設定 -->
+        <div class="sw-section">
+            <h2>BLEモード変更設定</h2>
+
+            <!-- アコーディオントグル -->
+            <button id="btRelayToggleBtn" class="btn-toggle" onclick="toggleBTRelayPanel()">
+                BT Relayモードに切り替え
+                <span id="btRelayChevron">▼</span>
+            </button>
+
+            <!-- BT Relay設定パネル: 初期非表示 -->
+            <div id="btRelaySettings" style="display:none;" class="bt-relay-panel">
+                <div class="bt-relay-panel-title">BT Relay設定</div>
+                <div class="chip-row">
+                    <label>振りモード</label>
+                    <div class="chip-group" id="fs_mode_group"></div>
+                    <input type="hidden" id="fs_mode" value="AMOS1">
+                </div>
+                <div class="chip-row">
+                    <label>アーム方向</label>
+                    <div class="chip-group" id="fs_dir_group"></div>
+                    <input type="hidden" id="fs_dir" value="ON">
+                </div>
+                <button id="btRelaySaveBtn" class="btn-relay-save" onclick="saveBtRelayCmd()">本設定でBT Relayモードに切り替え</button>
+
+                <!-- アームワンダBLEへ切り替え: BT Relayモード接続時のみ表示 -->
+                <div id="toArmOneDaBtn" style="display:none;">
+                    <button class="btn-mode-back" onclick="switchToArmOneDa()">アームワンダBLEモードに切り替え</button>
+                    <div class="relay-note">
+                        本切り替えを行いアームワンダBLEモードに切り替えた場合、アームワンダAIR専用のBLE通信機能が使える様になります
+                    </div>
+                </div>
+            </div>
         </div>
 
-        </div><!-- /swControls -->
+        <!-- 設定リセット -->
+        <div style="margin-bottom: 20px;">
+            <button class="btn-reset" onclick="resetSettings()">設定をデフォルトにリセット</button>
+        </div>
 
     </div>
 
@@ -188,21 +239,26 @@
         Google Chrome または Microsoft Edge をご使用ください。</p>
         <p><strong>[iPhone / iPad (iOS)]</strong><br>
         SafariやChromeでは動きません。<br>
-        App Storeから無料アプリ「<a href="https://apps.apple.com/app/bluefy-web-ble-browser/id1492912960" target="_blank">Bluefy</a>」を使い、本サイトを開いてください。</p>
+        App Storeから無料アプリ「<a href="https://apps.apple.com/jp/app/bluefy-web-ble-browser/id1492822055" target="_blank">Bluefy</a>」を使い、本サイトを開いてください。</p>
         <div class="license">© 2026 Ogimo-tech All Rights Reserved.</div>
     </div>
 
     <script>
-        const SERVICE_UUID  = "a6b00001-0eda-4b52-8e2d-9b1c3d4e5f60";
-        const RX_CHAR_UUID  = "a6b00002-0eda-4b52-8e2d-9b1c3d4e5f60";
-        const TX_CHAR_UUID  = "a6b00003-0eda-4b52-8e2d-9b1c3d4e5f60";
-        const DEVICE_PREFIX = "ArmOneDa-BLE-";
+        const SERVICE_UUID     = "a6b00001-0eda-4b52-8e2d-9b1c3d4e5f60";
+        const RX_CHAR_UUID     = "a6b00002-0eda-4b52-8e2d-9b1c3d4e5f60";
+        const TX_CHAR_UUID     = "a6b00003-0eda-4b52-8e2d-9b1c3d4e5f60";
+        const NUS_SERVICE_UUID = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
+        const NUS_RX_CHAR_UUID = "6e400002-b5a3-f393-e0a9-e50e24dcca9e";
+        const NUS_TX_CHAR_UUID = "6e400003-b5a3-f393-e0a9-e50e24dcca9e";
+        const DEVICE_PREFIX    = "ArmOneDa-BLE-";
+        const FS_DEVICE_NAME   = "BT Relay board";
 
         let bluetoothDevice, rxChar, txChar;
         let isLoadingSettings = false;
         let caps = 0;
         let verResReceived = false;
         let configLoaded = false;
+        let bleMode = 0; // 0=ArmOneDa, 1=BTRelay
 
         function log(text) {
             const el = document.getElementById('logArea');
@@ -212,17 +268,23 @@
 
         async function connectDevice() {
             try {
+                bleMode = 0;
                 bluetoothDevice = null;
                 if (navigator.bluetooth.getDevices) {
                     const devices = await navigator.bluetooth.getDevices();
-                    bluetoothDevice = devices.find(d => d.name && d.name.startsWith(DEVICE_PREFIX)) || null;
+                    bluetoothDevice = devices.find(d =>
+                        d.name && (d.name.startsWith(DEVICE_PREFIX) || d.name === FS_DEVICE_NAME)
+                    ) || null;
                     if (bluetoothDevice) log("既知のデバイスへ接続中...");
                 }
                 if (!bluetoothDevice) {
                     log("デバイスを選択してください...");
                     bluetoothDevice = await navigator.bluetooth.requestDevice({
-                        filters: [{ namePrefix: DEVICE_PREFIX }],
-                        optionalServices: [SERVICE_UUID]
+                        filters: [
+                            { namePrefix: DEVICE_PREFIX },
+                            { name: FS_DEVICE_NAME }
+                        ],
+                        optionalServices: [SERVICE_UUID, NUS_SERVICE_UUID]
                     });
                 }
                 bluetoothDevice.addEventListener('gattserverdisconnected', () => updateUIState(false));
@@ -238,19 +300,25 @@
                         } else { throw e; }
                     }
                 }
-                const service = await server.getPrimaryService(SERVICE_UUID);
-                rxChar = await service.getCharacteristic(RX_CHAR_UUID);
+
+                // ArmOneDaサービスを試み、失敗したらNUS(BTRelayモード)にフォールバック
                 try {
+                    const service = await server.getPrimaryService(SERVICE_UUID);
+                    bleMode = 0;
+                    rxChar = await service.getCharacteristic(RX_CHAR_UUID);
                     txChar = await service.getCharacteristic(TX_CHAR_UUID);
-                    await txChar.startNotifications();
-                    log("通知登録完了");
-                    txChar.addEventListener('characteristicvaluechanged', onNotify);
                 } catch (e) {
-                    txChar = null;
-                    log("通知キャラクタリスティック未対応");
+                    const service = await server.getPrimaryService(NUS_SERVICE_UUID);
+                    bleMode = 1;
+                    rxChar = await service.getCharacteristic(NUS_RX_CHAR_UUID);
+                    txChar = await service.getCharacteristic(NUS_TX_CHAR_UUID);
                 }
+                await txChar.startNotifications();
+                txChar.addEventListener('characteristicvaluechanged', onNotify);
+                log("通知登録完了");
+
                 updateUIState(true);
-                log("接続成功! バージョン取得中...");
+                log("接続成功! 設定を読込中...");
                 await sendVerGet();
             } catch (e) { log("エラー: " + e); }
         }
@@ -280,20 +348,25 @@
         }
 
         function updateUIState(isConnected) {
-            const statusText = document.getElementById("statusText");
             const connectBtn = document.getElementById("connectBtn");
             const controls   = document.getElementById("controls");
             if (isConnected) {
-                statusText.innerText = "接続済み: " + bluetoothDevice.name;
-                statusText.style.color = "#28a745";
                 connectBtn.innerText = "切断";
                 connectBtn.onclick = disconnectDevice;
                 controls.style.opacity = "1";
                 controls.style.pointerEvents = "auto";
             } else {
-                statusText.innerText = "未接続";
-                statusText.style.color = "#d9534f";
+                document.getElementById("statusText").innerText = "未接続";
+                document.getElementById("statusText").style.color = "#d9534f";
                 document.getElementById("versionText").textContent = "";
+                const badge = document.getElementById("currentModeBadge");
+                badge.textContent = "";
+                badge.style.display = "none";
+                badge.className = "mode-badge";
+                document.getElementById("toArmOneDaBtn").style.display = "none";
+                document.getElementById("btRelaySettings").style.display = "none";
+                document.getElementById("btRelayChevron").textContent = "▼";
+                document.getElementById("btRelayToggleBtn").style.display = "";
                 connectBtn.innerText = "接続開始";
                 connectBtn.onclick = connectDevice;
                 controls.style.opacity = "0.5";
@@ -301,6 +374,45 @@
                 configLoaded = false;
                 setSwControlsEnabled(false);
             }
+        }
+
+        function updateBleMode() {
+            const statusText  = document.getElementById('statusText');
+            const badge       = document.getElementById('currentModeBadge');
+            const toAOBtn     = document.getElementById('toArmOneDaBtn');
+            const toggleBtn   = document.getElementById('btRelayToggleBtn');
+            const devName = bluetoothDevice.name || "";
+            if (bleMode === 1) {
+                const displayName = (devName === FS_DEVICE_NAME) ? devName : FS_DEVICE_NAME;
+                statusText.innerText = "接続済み: " + displayName;
+                statusText.style.color = "#28a745";
+                badge.textContent = 'BT Relayモード';
+                badge.className = 'mode-badge mode-badge-fs';
+                badge.style.display = 'inline-block';
+                toAOBtn.style.display = 'block';
+                document.getElementById('btRelaySettings').style.display = 'block';
+                document.getElementById('btRelayChevron').textContent = '▲';
+                document.getElementById('btRelaySaveBtn').textContent = '本設定でBT Relayモード保存';
+                toggleBtn.style.display = 'none';
+            } else {
+                const displayName = devName.startsWith(DEVICE_PREFIX) ? devName : "ArmOneDa BLE";
+                statusText.innerText = "接続済み: " + displayName;
+                statusText.style.color = "#28a745";
+                badge.textContent = 'ArmOneDa BLEモード';
+                badge.className = 'mode-badge mode-badge-ao';
+                badge.style.display = 'inline-block';
+                toAOBtn.style.display = 'none';
+                document.getElementById('btRelaySaveBtn').textContent = '本設定でBT Relayモードに切り替え';
+                toggleBtn.style.display = '';
+            }
+        }
+
+        function toggleBTRelayPanel() {
+            const panel   = document.getElementById('btRelaySettings');
+            const chevron = document.getElementById('btRelayChevron');
+            const isOpen  = panel.style.display !== 'none';
+            panel.style.display = isOpen ? 'none' : 'block';
+            chevron.textContent = isOpen ? '▼' : '▲';
         }
 
         async function onNotify(event) {
@@ -313,8 +425,10 @@
                 const parts = inner.split(',');
                 caps = parseInt(parts[1]) || 0;
                 document.getElementById("versionText").textContent = "ver." + parts[0];
+                updateBleMode();
                 updateUI();
                 await sendCommand('#AMOCFGGET!');
+                await sendCommand('#AMOFSCMDGET!');
             }
             if (msg.startsWith('#AMOCFGRES:')) {
                 const inner = msg.slice(11, -1);
@@ -327,6 +441,19 @@
                 await sendCommand('#AMOCFGGET!');
                 isLoadingSettings = false;
             }
+            if (msg.startsWith('#AMOFSCMDRES:')) {
+                const cmd = msg.slice(13, -1);
+                parseBtRelayCmd(cmd);
+                log("BT Relayコマンド読込: " + cmd);
+            }
+            if (msg.startsWith('#AMOFSCMDOK!')) {
+                log("BT Relay設定 保存完了");
+            }
+        }
+
+        function parseBtRelayCmd(cmd) {
+            setSelectVal('fs_mode', cmd.startsWith('AMOR1') ? 'AMOR1' : 'AMOS1');
+            setSelectVal('fs_dir',  cmd.endsWith('REV')    ? 'REV'   : 'ON');
         }
 
         function applyConfig(p) {
@@ -361,12 +488,14 @@
         }
 
         const PICKER_OPTS = {
+            fs_mode:  [{v:'AMOS1',l:'1回振り'},{v:'AMOR1',l:'連打振り'}],
+            fs_dir:   [{v:'ON',l:'正転'},{v:'REV',l:'逆転'}],
             sw1_mode: [{v:'1',l:'1回振り'},{v:'2',l:'連打'}],
             sw1_dir:  [{v:'0',l:'正転'},{v:'1',l:'逆転'}],
-            sw1_op:   [{v:'0',l:'ホールド',sub:'(押している間ON)'},{v:'1',l:'ラッチ'},{v:'2',l:'タイマー'}],
+            sw1_op:   [{v:'0',l:'ダイレクト',sub:'(押している間ON)'},{v:'1',l:'ラッチ'},{v:'2',l:'タイマー'}],
             sw2_mode: [{v:'1',l:'1回振り'},{v:'2',l:'連打'}],
             sw2_dir:  [{v:'0',l:'正転'},{v:'1',l:'逆転'}],
-            sw2_op:   [{v:'0',l:'ホールド',sub:'(押している間ON)'},{v:'1',l:'ラッチ'},{v:'2',l:'タイマー'}],
+            sw2_op:   [{v:'0',l:'ダイレクト',sub:'(押している間ON)'},{v:'1',l:'ラッチ'},{v:'2',l:'タイマー'}],
         };
 
         function renderChips(id) {
@@ -450,6 +579,26 @@
             const cmd = `#AMOSW${sw}CFG:${arm},${mode},${dir},${op},${timer_ms},${speed_ms}!`;
             await sendCommand(cmd);
             log(`SW${sw} 保存完了`);
+        }
+
+        async function saveBtRelayCmd() {
+            const mode = document.getElementById('fs_mode').value;
+            const dir  = document.getElementById('fs_dir').value;
+            if (bleMode === 0) {
+                if (!confirm('BT Relayモードに切り替えます。\nデバイスが再起動されます。よろしいですか？')) return;
+                await sendCommand('#AMOFSCMD:' + mode + dir + '!');
+                await new Promise(r => setTimeout(r, 300));
+                await sendCommand('#AMOBLEMODE:1!');
+                log('BT Relayモードへ切替中... デバイスが再起動します');
+            } else {
+                await sendCommand('#AMOFSCMD:' + mode + dir + '!');
+            }
+        }
+
+        async function switchToArmOneDa() {
+            if (!confirm('アームワンダBLEモードに切り替えます。\nデバイスが再起動されます。よろしいですか？')) return;
+            await sendCommand('#AMOBLEMODE:0!');
+            log('アームワンダBLEモードへ切替中... デバイスが再起動します');
         }
 
         async function resetSettings() {
