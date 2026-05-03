@@ -117,7 +117,7 @@
                 statusText.innerText = "検索中...";
                 
                 bluetoothDevice = await navigator.bluetooth.requestDevice({
-                    filters: [{ namePrefix: DEVICE_NAME_PREFIX }],
+                    filters: [{ namePrefix: DEVICE_NAME_PREFIX, services: [SERVICE_UUID] }],
                     optionalServices: [SERVICE_UUID]
                 });
                 
