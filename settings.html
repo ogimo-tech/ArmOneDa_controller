@@ -270,12 +270,13 @@
             try {
                 bleMode = 0;
                 bluetoothDevice = null;
+                let fromCache = false;
                 if (navigator.bluetooth.getDevices) {
                     const devices = await navigator.bluetooth.getDevices();
                     bluetoothDevice = devices.find(d =>
                         d.name && (d.name.startsWith(DEVICE_PREFIX) || d.name === FS_DEVICE_NAME)
                     ) || null;
-                    if (bluetoothDevice) log("既知のデバイスへ接続中...");
+                    if (bluetoothDevice) { fromCache = true; log("既知のデバイスへ接続中..."); }
                 }
                 if (!bluetoothDevice) {
                     log("デバイスを選択してください...");
@@ -297,6 +298,17 @@
                         if (i < 2) {
                             log("接続リトライ中...");
                             await new Promise(r => setTimeout(r, 1000));
+                        } else if (fromCache) {
+                            log("デバイスを選択してください...");
+                            bluetoothDevice = await navigator.bluetooth.requestDevice({
+                                filters: [
+                                    { namePrefix: DEVICE_PREFIX },
+                                    { services: [NUS_SERVICE_UUID] }
+                                ],
+                                optionalServices: [SERVICE_UUID]
+                            });
+                            bluetoothDevice.addEventListener('gattserverdisconnected', () => updateUIState(false));
+                            server = await bluetoothDevice.gatt.connect();
                         } else { throw e; }
                     }
                 }
