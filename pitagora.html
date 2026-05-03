@@ -456,7 +456,7 @@
         async function connectBle() {
             try {
                 bluetoothDevice = await navigator.bluetooth.requestDevice({
-                    filters: [{ namePrefix: DEVICE_NAME_PREFIX, services: [SERVICE_UUID] }],
+                    filters: [{ namePrefix: DEVICE_NAME_PREFIX }],
                     optionalServices: [SERVICE_UUID]
                 });
                 const server = await bluetoothDevice.gatt.connect();

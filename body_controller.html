@@ -187,7 +187,7 @@
         async function connectBle() {
             try {
                 log("検索中...");
-                bluetoothDevice = await navigator.bluetooth.requestDevice({ filters: [{ namePrefix: DEVICE_NAME_PREFIX, services: [SERVICE_UUID] }], optionalServices: [SERVICE_UUID] });
+                bluetoothDevice = await navigator.bluetooth.requestDevice({ filters: [{ namePrefix: DEVICE_NAME_PREFIX }], optionalServices: [SERVICE_UUID] });
                 bluetoothDevice.addEventListener('gattserverdisconnected', onDisconnected);
                 const server = await bluetoothDevice.gatt.connect();
                 const service = await server.getPrimaryService(SERVICE_UUID);

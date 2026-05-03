@@ -281,10 +281,10 @@
                     log("デバイスを選択してください...");
                     bluetoothDevice = await navigator.bluetooth.requestDevice({
                         filters: [
-                            { namePrefix: DEVICE_PREFIX, services: [SERVICE_UUID] },
+                            { namePrefix: DEVICE_PREFIX },
                             { services: [NUS_SERVICE_UUID] }
                         ],
-                        optionalServices: [SERVICE_UUID, NUS_SERVICE_UUID]
+                        optionalServices: [SERVICE_UUID]
                     });
                 }
                 bluetoothDevice.addEventListener('gattserverdisconnected', () => updateUIState(false));
