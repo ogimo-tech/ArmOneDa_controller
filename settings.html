@@ -282,7 +282,7 @@
                     log("デバイスを選択してください...");
                     bluetoothDevice = await navigator.bluetooth.requestDevice({
                         filters: [
-                            { namePrefix: DEVICE_PREFIX },
+                            { services: [SERVICE_UUID] },
                             { services: [NUS_SERVICE_UUID] }
                         ],
                         optionalServices: [SERVICE_UUID]
@@ -302,7 +302,7 @@
                             log("デバイスを選択してください...");
                             bluetoothDevice = await navigator.bluetooth.requestDevice({
                                 filters: [
-                                    { namePrefix: DEVICE_PREFIX },
+                                    { services: [SERVICE_UUID] },
                                     { services: [NUS_SERVICE_UUID] }
                                 ],
                                 optionalServices: [SERVICE_UUID]
