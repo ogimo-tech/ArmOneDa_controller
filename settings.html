@@ -41,6 +41,13 @@
         .chip-active { background: #007bff; color: #fff; border-color: #007bff; }
         .chip-active:hover { background: #0056b3 !important; border-color: #0056b3 !important; }
         .chip-sub { font-size: 0.72em; font-weight: normal; display: block; opacity: 0.85; }
+        .ao-scroll { display: flex; gap: 6px; overflow-x: auto; padding: 6px 2px; margin-bottom: 8px; -webkit-overflow-scrolling: touch; }
+        .ao-chip { flex: 0 0 auto; min-width: 58px; min-height: 44px; display: flex; align-items: center; justify-content: center; background: #f0f4ff; color: #555; border: 2px solid #c8d8f0; border-radius: 14px; font-size: 0.85rem; font-weight: bold; cursor: pointer; touch-action: manipulation; }
+        .ao-chip:hover { background: #d8e8fc; border-color: #90b8e8; }
+        .ao-chip-active { background: #007bff; color: #fff; border-color: #007bff; }
+        .ao-current { font-size: 0.9rem; color: #555; margin: 0 0 10px; }
+        .ao-current span { font-weight: bold; color: #007bff; }
+        .ao-label { font-size: 0.9rem; color: #555; margin: 0 0 2px; }
         .form-row .range-val { font-size: 0.85rem; font-weight: bold; color: #007bff; width: 60px; text-align: right; }
         .sub-field { margin-left: 15px; border-left: 3px solid #ddd; padding-left: 10px; }
         .disabled-row { opacity: 0.5; pointer-events: none; }
@@ -219,6 +226,15 @@
             </div>
         </div>
 
+        <!-- 乾電池 自動OFF 設定 (v2.0.0以降のみ表示) -->
+        <div id="autoOffSection" class="sw-section" style="display:none;">
+            <h2>乾電池 自動OFF 設定</h2>
+            <p class="ao-current">現在の設定: <span id="aoCurrentText">---</span></p>
+            <p class="ao-label">設定変更</p>
+            <div class="ao-scroll" id="ao_group"></div>
+            <button class="btn-save" onclick="applyAutoOff()">設定を反映</button>
+        </div>
+
         <!-- 設定リセット -->
         <div style="margin-bottom: 20px;">
             <button class="btn-reset" onclick="resetSettings()">設定をデフォルトにリセット</button>
@@ -263,6 +279,20 @@
         let verResReceived = false;
         let configLoaded = false;
         let bleMode = 0; // 0=ArmOneDa, 1=BTRelay
+        let fwMajor = 0; // ファームメジャーバージョン (1=Ver1系, 2=Ver2系)
+        let aoSelectedSec = null; // 自動OFF 選択中の秒数
+
+        // 自動OFF 設定変更の選択肢（分→秒）
+        const AO_OPTS = [
+            { sec: 300,  l: '5分'  },
+            { sec: 600,  l: '10分' },
+            { sec: 1200, l: '20分' },
+            { sec: 1800, l: '30分' },
+            { sec: 2400, l: '40分' },
+            { sec: 3000, l: '50分' },
+            { sec: 3600, l: '1時間' },
+            { sec: 0,    l: 'OFF' },
+        ];
 
         function log(text) {
             const el = document.getElementById('logArea');
@@ -383,6 +413,9 @@
                 document.getElementById("btRelaySettings").style.display = "none";
                 document.getElementById("btRelayChevron").textContent = "▼";
                 document.getElementById("btRelayToggleBtn").style.display = "";
+                fwMajor = 0;
+                aoSelectedSec = null;
+                document.getElementById("autoOffSection").style.display = "none";
                 connectBtn.innerText = "接続開始";
                 connectBtn.onclick = connectDevice;
                 controls.style.opacity = "0.5";
@@ -440,11 +473,14 @@
                 const inner = msg.slice(11, -1);
                 const parts = inner.split(',');
                 caps = parseInt(parts[1]) || 0;
+                fwMajor = parseInt((parts[0] || '').split('.')[0]) || 0;
                 document.getElementById("versionText").textContent = "ver." + parts[0];
                 updateBleMode();
                 updateUI();
+                updateAutoOffVisibility();
                 await sendCommand('#AMOCFGGET!');
                 await sendCommand('#AMOFSCMDGET!');
+                if (fwMajor >= 2) await sendCommand('#AMOAOGET!');
             }
             if (msg.startsWith('#AMOCFGRES:')) {
                 const inner = msg.slice(11, -1);
@@ -464,6 +500,12 @@
             }
             if (msg.startsWith('#AMOFSCMDOK!')) {
                 log("BT Relay設定 保存完了");
+            }
+            if (msg.startsWith('#AMOAORES:')) {
+                const sec = parseInt(msg.slice(10, -1)) || 0;
+                document.getElementById('aoCurrentText').textContent = aoSecToLabel(sec);
+                if (AO_OPTS.some(o => o.sec === sec)) { aoSelectedSec = sec; renderAoChips(); }
+                log("自動OFF設定: " + aoSecToLabel(sec));
             }
         }
 
@@ -535,6 +577,38 @@
 
         function renderAllChips() {
             for (const id in PICKER_OPTS) renderChips(id);
+        }
+
+        // ===== 乾電池 自動OFF 設定 =====
+        function renderAoChips() {
+            const group = document.getElementById('ao_group');
+            if (!group) return;
+            group.innerHTML = '';
+            AO_OPTS.forEach(opt => {
+                const btn = document.createElement('button');
+                btn.className = 'ao-chip' + (opt.sec === aoSelectedSec ? ' ao-chip-active' : '');
+                btn.textContent = opt.l;
+                btn.onclick = () => { aoSelectedSec = opt.sec; renderAoChips(); };
+                group.appendChild(btn);
+            });
+        }
+
+        function aoSecToLabel(sec) {
+            if (sec <= 0) return 'OFF';
+            if (sec % 60 === 0) return (sec / 60) + '分';
+            return sec + '秒';
+        }
+
+        // Ver2系のみ自動OFF設定を表示。Ver1系は項目自体を非表示。
+        function updateAutoOffVisibility() {
+            const sec = document.getElementById('autoOffSection');
+            if (!sec) return;
+            sec.style.display = (fwMajor >= 2) ? 'block' : 'none';
+        }
+
+        async function applyAutoOff() {
+            if (aoSelectedSec === null) { log('自動OFF: 設定値を選択してください'); return; }
+            await sendCommand('#AMOAOSET:' + aoSelectedSec + '!');
         }
 
         function selectChip(id, idx) {
@@ -630,6 +704,7 @@
         }
 
         renderAllChips();
+        renderAoChips();
         updateUI();
     </script>
 </body>
