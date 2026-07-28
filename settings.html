@@ -19,6 +19,7 @@
         button:hover { background-color: #0056b3; }
         button:disabled { background-color: #ccc; cursor: not-allowed; opacity: 0.6; }
         .btn-connect { background-color: #28a745; width: 100%; }
+        .btn-connect-all { background-color: #6c757d; width: 100%; margin-top: 8px; font-size: 0.8rem; padding: 8px; }
         .btn-save { background-color: #e67e22; width: 100%; margin-top: 12px; }
         .btn-load { background-color: #6c757d; width: 100%; margin-bottom: 15px; }
         .btn-reset { background-color: #d9534f; width: 100%; margin-top: 12px; }
@@ -92,6 +93,7 @@
         </div>
         <div style="margin-top:10px;">
             <button id="connectBtn" class="btn-connect" onclick="connectDevice()">接続開始</button>
+            <button id="connectAllBtn" class="btn-connect-all" onclick="connectDevice(true)">見つからない場合はこちら（すべての機器から選ぶ）</button>
         </div>
     </div>
 
@@ -301,12 +303,30 @@
             el.innerHTML = `[${t}] ${text}<br>` + el.innerHTML;
         }
 
-        async function connectDevice() {
+        // showAll=true は絞り込み無しで機器を選ばせる脱出口。
+        // Bluefy(iOS)は filters 配列の先頭要素しか評価しないらしく、2番目のNUSフィルタが無視されて
+        // BT Relayモードのデバイスがチューザーに出ないため。
+        // optionalServices は acceptAllDevices 時に filters 由来のサービス許可が無くなるので両方明示する。
+        async function pickDevice(showAll) {
+            return await navigator.bluetooth.requestDevice(showAll ? {
+                acceptAllDevices: true,
+                optionalServices: [SERVICE_UUID, NUS_SERVICE_UUID]
+            } : {
+                filters: [
+                    { services: [SERVICE_UUID] },
+                    { services: [NUS_SERVICE_UUID] }
+                ],
+                optionalServices: [SERVICE_UUID, NUS_SERVICE_UUID]
+            });
+        }
+
+        async function connectDevice(showAll) {
             try {
                 bleMode = 0;
                 bluetoothDevice = null;
                 let fromCache = false;
-                if (navigator.bluetooth.getDevices) {
+                // showAll時は既知デバイス(接続に失敗した相手)を再試行しても無駄なので選択画面へ直行する
+                if (navigator.bluetooth.getDevices && !showAll) {
                     const devices = await navigator.bluetooth.getDevices();
                     bluetoothDevice = devices.find(d =>
                         d.name && (d.name.startsWith(DEVICE_PREFIX) || d.name === FS_DEVICE_NAME)
@@ -315,13 +335,7 @@
                 }
                 if (!bluetoothDevice) {
                     log("デバイスを選択してください...");
-                    bluetoothDevice = await navigator.bluetooth.requestDevice({
-                        filters: [
-                            { services: [SERVICE_UUID] },
-                            { services: [NUS_SERVICE_UUID] }
-                        ],
-                        optionalServices: [SERVICE_UUID]
-                    });
+                    bluetoothDevice = await pickDevice(showAll);
                 }
                 bluetoothDevice.addEventListener('gattserverdisconnected', () => updateUIState(false));
                 let server;
@@ -335,13 +349,7 @@
                             await new Promise(r => setTimeout(r, 1000));
                         } else if (fromCache) {
                             log("デバイスを選択してください...");
-                            bluetoothDevice = await navigator.bluetooth.requestDevice({
-                                filters: [
-                                    { services: [SERVICE_UUID] },
-                                    { services: [NUS_SERVICE_UUID] }
-                                ],
-                                optionalServices: [SERVICE_UUID]
-                            });
+                            bluetoothDevice = await pickDevice(showAll);
                             bluetoothDevice.addEventListener('gattserverdisconnected', () => updateUIState(false));
                             server = await bluetoothDevice.gatt.connect();
                         } else { throw e; }
@@ -400,6 +408,7 @@
             if (isConnected) {
                 connectBtn.innerText = "切断";
                 connectBtn.onclick = disconnectDevice;
+                document.getElementById("connectAllBtn").style.display = "none";
                 controls.style.opacity = "1";
                 controls.style.pointerEvents = "auto";
             } else {
@@ -418,7 +427,8 @@
                 aoSelectedSec = null;
                 document.getElementById("autoOffSection").style.display = "none";
                 connectBtn.innerText = "接続開始";
-                connectBtn.onclick = connectDevice;
+                connectBtn.onclick = () => connectDevice();   // 直接代入するとClickEventがshowAllに渡ってしまう
+                document.getElementById("connectAllBtn").style.display = "";
                 controls.style.opacity = "0.5";
                 controls.style.pointerEvents = "none";
                 configLoaded = false;
