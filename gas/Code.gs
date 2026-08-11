@@ -76,31 +76,35 @@ function setupSheets() {
 
   db.getRange('A3').setValue('■ 日別アクセス数 (page_view, ページ別)').setFontWeight('bold');
   db.getRange('A4').setFormula(
-    '=IFERROR(QUERY(Log!A:C,"select toDate(A), count(C) where C=\'page_view\' group by toDate(A) pivot B order by toDate(A) desc label toDate(A) \'日付\'",0),"データなし")');
+    '=IFERROR(QUERY(Log!A:C,"select toDate(A), count(C) where C=\'page_view\' group by toDate(A) pivot B order by toDate(A) desc label toDate(A) \'日付\'",1),"データなし")');
 
   db.getRange('E3').setValue('■ デバイス別利用状況').setFontWeight('bold');
   db.getRange('E4').setFormula(
-    '=IFERROR(QUERY(Log!A:D,"select D, count(C), max(A) where D<>\'\' group by D order by count(C) desc label D \'デバイス\', count(C) \'件数\', max(A) \'最終利用\'",0),"データなし")');
+    '=IFERROR(QUERY(Log!A:D,"select D, count(C), max(A) where D<>\'\' group by D order by count(C) desc label D \'デバイス\', count(C) \'件数\', max(A) \'最終利用\'",1),"データなし")');
 
   db.getRange('I3').setValue('■ イベント件数').setFontWeight('bold');
   db.getRange('I4').setFormula(
-    '=IFERROR(QUERY(Log!A:C,"select C, count(B) group by C order by count(B) desc label C \'イベント\', count(B) \'件数\'",0),"データなし")');
+    '=IFERROR(QUERY(Log!A:C,"select C, count(B) group by C order by count(B) desc label C \'イベント\', count(B) \'件数\'",1),"データなし")');
 
   db.getRange('L3').setValue('■ 動作モード分布 (settings_save)').setFontWeight('bold');
   db.getRange('L4').setFormula(
-    '=IFERROR(QUERY(Log!A:Q,"select I, count(C) where C=\'settings_save\' group by I label I \'mode(1=1回振り,2=連打)\', count(C) \'件数\'",0),"データなし")');
+    '=IFERROR(QUERY(Log!A:Q,"select I, count(C) where C=\'settings_save\' group by I label I \'mode(1=1回振り,2=連打)\', count(C) \'件数\'",1),"データなし")');
 
   db.getRange('L9').setValue('■ 動作方式分布 (settings_save)').setFontWeight('bold');
   db.getRange('L10').setFormula(
-    '=IFERROR(QUERY(Log!A:Q,"select K, count(C) where C=\'settings_save\' group by K label K \'op(0=ﾀﾞｲﾚｸﾄ,1=ﾗｯﾁ,2=ﾀｲﾏｰ)\', count(C) \'件数\'",0),"データなし")');
+    '=IFERROR(QUERY(Log!A:Q,"select K, count(C) where C=\'settings_save\' group by K label K \'op(0=ﾀﾞｲﾚｸﾄ,1=ﾗｯﾁ,2=ﾀｲﾏｰ)\', count(C) \'件数\'",1),"データなし")');
 
   db.getRange('O3').setValue('■ 自動OFF設定の人気値').setFontWeight('bold');
   db.getRange('O4').setFormula(
-    '=IFERROR(QUERY(Log!A:Q,"select N, count(C) where C=\'settings_save_ao\' group by N order by count(C) desc label N \'秒\', count(C) \'件数\'",0),"データなし")');
+    '=IFERROR(QUERY(Log!A:Q,"select N, count(C) where C=\'settings_save_ao\' group by N order by count(C) desc label N \'秒\', count(C) \'件数\'",1),"データなし")');
 
   db.getRange('O9').setValue('■ 連打速度分布 (mode=連打時)').setFontWeight('bold');
   db.getRange('O10').setFormula(
-    '=IFERROR(QUERY(Log!A:Q,"select M, count(C) where C=\'settings_save\' and I=2 group by M order by M label M \'speed_ms(0=最速)\', count(C) \'件数\'",0),"データなし")');
+    '=IFERROR(QUERY(Log!A:Q,"select M, count(C) where C=\'settings_save\' and I=2 group by M order by M label M \'speed_ms(0=最速)\', count(C) \'件数\'",1),"データなし")');
+
+  // QUERY結果の日付がシリアル値表示になるため表示書式を設定
+  db.getRange('A4:A400').setNumberFormat('yyyy/mm/dd');
+  db.getRange('G4:G400').setNumberFormat('yyyy/mm/dd hh:mm');
 }
 
 // GASエディタ上で実行する動作確認。全イベント種+不正イベントを doPost に流す。
