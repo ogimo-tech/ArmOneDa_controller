@@ -1,7 +1,7 @@
 // ArmOneDa WebApp 利用ログ送信（fire-and-forget）
 // 送信失敗・未設定はアプリ動作に一切影響させない。
 // デバッグ表示: localStorage.setItem('amoDebug','1')
-const AMO_GAS_ENDPOINT = '';   // GAS WebアプリURL（未設定時は送信しない）
+const AMO_GAS_ENDPOINT = 'https://script.google.com/macros/s/AKfycbw4TbQNuCJWtkH7dFlC6lP2m9fWqNa4JS9RR8fTK00qRDM8FdhzhRH9FKGVmyCNXiOHkw/exec';   // GAS WebアプリURL（未設定時は送信しない）
 
 function amoLog(eventType, fields) {
     try {
