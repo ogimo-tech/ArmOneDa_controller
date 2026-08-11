@@ -265,6 +265,7 @@
         <div class="license">© 2026 Ogimo-tech All Rights Reserved.</div>
     </div>
 
+    <script src="analytics.js"></script>
     <script>
         const SERVICE_UUID     = "a6b00001-0eda-4b52-8e2d-9b1c3d4e5f60";
         const RX_CHAR_UUID     = "a6b00002-0eda-4b52-8e2d-9b1c3d4e5f60";
@@ -282,6 +283,16 @@
         let configLoaded = false;
         let bleMode = 0; // 0=ArmOneDa, 1=BTRelay
         let fwMajor = 0; // ファームメジャーバージョン (1=Ver1系, 2=Ver2系)
+        let fwStr = '';  // ファームバージョン文字列 (利用ログ用)
+        let bleConnectLogged = false;
+
+        function amoCtx() {
+            return {
+                device: (bluetoothDevice && bluetoothDevice.name) || '',
+                fw: fwStr,
+                bleMode: bleMode,
+            };
+        }
         let aoSelectedSec = null; // 自動OFF 選択中の秒数
 
         // 自動OFF 設定変更の選択肢（分→秒）
@@ -323,6 +334,7 @@
         async function connectDevice(showAll) {
             try {
                 bleMode = 0;
+                bleConnectLogged = false;
                 bluetoothDevice = null;
                 let fromCache = false;
                 // showAll時は既知デバイス(接続に失敗した相手)を再試行しても無駄なので選択画面へ直行する
@@ -388,6 +400,7 @@
                 await new Promise(resolve => setTimeout(resolve, 1000));
                 if (!verResReceived) {
                     document.getElementById("versionText").textContent = "Ver ---  (スイッチ設定未対応版)";
+                    if (!bleConnectLogged) { bleConnectLogged = true; amoLog('ble_connect', amoCtx()); }
                 }
             }
         }
@@ -485,6 +498,8 @@
                 const parts = inner.split(',');
                 caps = parseInt(parts[1]) || 0;
                 fwMajor = parseInt((parts[0] || '').split('.')[0]) || 0;
+                fwStr = parts[0] || '';
+                if (!bleConnectLogged) { bleConnectLogged = true; amoLog('ble_connect', amoCtx()); }
                 document.getElementById("versionText").textContent = "ver." + parts[0];
                 updateBleMode();
                 updateUI();
@@ -517,6 +532,7 @@
                 document.getElementById('aoCurrentText').textContent = aoSecToLabel(sec);
                 if (AO_OPTS.some(o => o.sec === sec)) { aoSelectedSec = sec; renderAoChips(); }
                 log("自動OFF設定: " + aoSecToLabel(sec));
+                amoLog('settings_load_ao', Object.assign(amoCtx(), { ao_sec: sec }));
             }
         }
 
@@ -538,6 +554,7 @@
             setSelectVal('sw2_op',    p[9]);
             setRangeVal ('sw2_timer', p[10], 'sw2_timer_val');
             setSpeedVal ('sw2_speed', p[11], 'sw2_speed_val');
+            amoLog('settings_load', Object.assign(amoCtx(), { cfg: p.slice(0, 12) }));
             configLoaded = true;
             setSwControlsEnabled(true);
             updateUI();
@@ -620,6 +637,7 @@
         async function applyAutoOff() {
             if (aoSelectedSec === null) { log('自動OFF: 設定値を選択してください'); return; }
             await sendCommand('#AMOAOSET:' + aoSelectedSec + '!');
+            amoLog('settings_save_ao', Object.assign(amoCtx(), { ao_sec: aoSelectedSec }));
         }
 
         function selectChip(id, idx) {
@@ -679,6 +697,11 @@
             const speed_ms = raw_speed <= 140 ? 0 : raw_speed;
             const cmd = `#AMOSW${sw}CFG:${arm},${mode},${dir},${op},${timer_ms},${speed_ms}!`;
             await sendCommand(cmd);
+            amoLog('settings_save', Object.assign(amoCtx(), {
+                sw: sw,
+                arm: Number(arm), mode: Number(mode), dir: Number(dir), op: Number(op),
+                timer_ms: Number(timer_ms), speed_ms: speed_ms,
+            }));
             log(`SW${sw} 保存完了`);
         }
 
@@ -688,11 +711,13 @@
             if (bleMode === 0) {
                 if (!confirm('BT Relayモードに切り替えます。\nデバイスが再起動されます。よろしいですか？')) return;
                 await sendCommand('#AMOFSCMD:' + mode + dir + '!');
+                amoLog('settings_save_btrelay', Object.assign(amoCtx(), { fs_mode: mode, fs_dir: dir }));
                 await new Promise(r => setTimeout(r, 300));
                 await sendCommand('#AMOBLEMODE:1!');
                 log('BT Relayモードへ切替中... デバイスが再起動します');
             } else {
                 await sendCommand('#AMOFSCMD:' + mode + dir + '!');
+                amoLog('settings_save_btrelay', Object.assign(amoCtx(), { fs_mode: mode, fs_dir: dir }));
             }
         }
 
@@ -705,6 +730,7 @@
         async function resetSettings() {
             if (!confirm("設定をデフォルトに戻します。よろしいですか？")) return;
             await sendCommand('#AMOCFGRESET!');
+            amoLog('settings_reset', amoCtx());
         }
 
         async function sendCommand(cmd) {
