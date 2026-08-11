@@ -16,8 +16,17 @@ function doPost(e) {
     if (!raw || raw.length > MAX_PAYLOAD) return ok_();
     const d = JSON.parse(raw);
     if (ALLOWED_EVENTS.indexOf(d.event) < 0) return ok_();
-    const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_LOG);
-    toRows_(d, raw).forEach(function (r) { sheet.appendRow(r); });
+    // 並行実行でappendRowが競合すると行が失われるため、ロック+一括書き込みにする
+    const lock = LockService.getScriptLock();
+    lock.waitLock(10000);
+    try {
+      const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_LOG);
+      const rows = toRows_(d, raw);
+      sheet.getRange(sheet.getLastRow() + 1, 1, rows.length, rows[0].length).setValues(rows);
+      SpreadsheetApp.flush();
+    } finally {
+      lock.releaseLock();
+    }
   } catch (err) {
     // クライアントは応答を見ないため、常に200を返して握りつぶす
   }
