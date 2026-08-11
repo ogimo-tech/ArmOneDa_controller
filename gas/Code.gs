@@ -84,7 +84,7 @@ function setupSheets() {
 
   db.getRange('I3').setValue('■ イベント件数').setFontWeight('bold');
   db.getRange('I4').setFormula(
-    '=IFERROR(QUERY(Log!A:C,"select C, count(B) group by C order by count(B) desc label C \'イベント\', count(B) \'件数\'",1),"データなし")');
+    '=IFERROR(QUERY(Log!A:C,"select C, count(B) where C is not null group by C order by count(B) desc label C \'イベント\', count(B) \'件数\'",1),"データなし")');
 
   db.getRange('L3').setValue('■ 動作モード分布 (settings_save)').setFontWeight('bold');
   db.getRange('L4').setFormula(
