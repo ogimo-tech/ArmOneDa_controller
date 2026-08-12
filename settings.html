@@ -225,14 +225,6 @@
                     <input type="hidden" id="fs_dir" value="ON">
                 </div>
                 <button id="btRelaySaveBtn" class="btn-relay-save" onclick="saveBtRelayCmd()">本設定でBT Relayモードに切り替え</button>
-
-                <!-- アームワンダBLEへ切り替え: BT Relayモード接続時のみ表示 -->
-                <div id="toArmOneDaBtn" style="display:none;">
-                    <button class="btn-mode-back" onclick="switchToArmOneDa()">アームワンダBLEモードに切り替え</button>
-                    <div class="relay-note">
-                        本切り替えを行いアームワンダBLEモードに切り替えた場合、アームワンダAIR専用のBLE通信機能が使える様になります
-                    </div>
-                </div>
             </div>
 
             <button id="midiToggleBtn" class="btn-toggle" style="display:none;" onclick="toggleMidiPanel()">
@@ -244,7 +236,7 @@
                 <div class="midi-panel-title">MIDI設定</div>
                 <div class="midi-note-row">
                     <label for="midiNoteInput">ノート番号</label>
-                    <input type="number" id="midiNoteInput" min="0" max="127" value="49"
+                    <input type="number" id="midiNoteInput" min="0" max="127" value="61"
                            oninput="updateMidiNoteName()">
                     <span id="midiNoteName" class="midi-note-name"></span>
                 </div>
@@ -259,6 +251,14 @@
                 <div class="midi-note">
                     アームが叩ける速さは毎秒3〜5回程度が上限です。ハイハットなど細かい刻みのパートには追従できません。<br>
                     音名の表記はアプリによって異なります（番号60をC3と表示するアプリとC4と表示するアプリがあります）。
+                </div>
+            </div>
+
+            <!-- アームワンダBLEへ切り替え: ArmOneDaモード以外で接続時のみ表示 -->
+            <div id="toArmOneDaBtn" style="display:none;">
+                <button class="btn-mode-back" onclick="switchToArmOneDa()">アームワンダBLEモードに切り替え</button>
+                <div class="relay-note">
+                    本切り替えを行いアームワンダBLEモードに切り替えた場合、アームワンダAIR専用のBLE通信機能が使える様になります
                 </div>
             </div>
         </div>
@@ -520,6 +520,25 @@
             const toggleBtn   = document.getElementById('btRelayToggleBtn');
             const devName = bluetoothDevice.name || "";
             const midiToggleBtn = document.getElementById('midiToggleBtn');
+
+            // MIDIモード中はトグルではなく、現在のMIDI設定を編集するパネルとして常時展開する
+            if (bleMode === 2) {
+                midiToggleBtn.style.display = 'none';
+                document.getElementById('midiSettings').style.display = 'block';
+                document.getElementById('midiChevron').textContent = '▲';
+                document.getElementById('midiSaveBtn').textContent = '本設定でMIDI設定を保存';
+                sendCommand('#AMOMIDICFGGET!');
+            } else {
+                if (midiModeSupported) {
+                    midiToggleBtn.style.display = '';
+                } else {
+                    midiToggleBtn.style.display = 'none';
+                    document.getElementById('midiSettings').style.display = 'none';
+                    document.getElementById('midiChevron').textContent = '▼';
+                }
+                document.getElementById('midiSaveBtn').textContent = '本設定でMIDIモードに切り替え';
+            }
+
             if (bleMode === 2) {
                 const displayName = devName.startsWith("ArmOneDa-MIDI-") ? devName : "ArmOneDa MIDI";
                 statusText.innerText = "接続済み: " + displayName;
@@ -527,25 +546,10 @@
                 badge.textContent = 'MIDIモード';
                 badge.className = 'mode-badge mode-badge-fs';
                 badge.style.display = '';
-                toAOBtn.style.display = '';
-                midiToggleBtn.style.display = 'none';
-                document.getElementById('midiSettings').style.display = 'block';
-                document.getElementById('midiChevron').textContent = '▲';
-                document.getElementById('midiSaveBtn').textContent = '本設定でMIDI設定を保存';
-                toggleBtn.style.display = 'none';
-                document.getElementById('btRelaySettings').style.display = 'none';
-                sendCommand('#AMOMIDICFGGET!');
-                return;
-            }
-            if (midiModeSupported) {
-                midiToggleBtn.style.display = '';
-            } else {
-                midiToggleBtn.style.display = 'none';
-                document.getElementById('midiSettings').style.display = 'none';
-                document.getElementById('midiChevron').textContent = '▼';
-            }
-            document.getElementById('midiSaveBtn').textContent = '本設定でMIDIモードに切り替え';
-            if (bleMode === 1) {
+                toAOBtn.style.display = 'block';
+                document.getElementById('btRelaySaveBtn').textContent = '本設定でBT Relayモードに切り替え';
+                toggleBtn.style.display = '';
+            } else if (bleMode === 1) {
                 const displayName = (devName === FS_DEVICE_NAME) ? devName : FS_DEVICE_NAME;
                 statusText.innerText = "接続済み: " + displayName;
                 statusText.style.color = "#28a745";
@@ -815,7 +819,7 @@
         async function saveBtRelayCmd() {
             const mode = document.getElementById('fs_mode').value;
             const dir  = document.getElementById('fs_dir').value;
-            if (bleMode === 0) {
+            if (bleMode !== 1) {
                 if (!confirm('BT Relayモードに切り替えます。\nデバイスが再起動されます。よろしいですか？')) return;
                 await sendCommand('#AMOFSCMD:' + mode + dir + '!');
                 amoLog('settings_save_btrelay', Object.assign(amoCtx(), { fs_mode: mode, fs_dir: dir }));
