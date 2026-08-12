@@ -28,6 +28,14 @@
         .btn-mode-back:hover { background-color: #cf6d17; }
         .btn-relay-save { background-color: #9b59b6; width: 100%; margin-top: 12px; }
         .btn-relay-save:hover { background-color: #7d3c98; }
+        .btn-midi-save { background-color: #16a085; width: 100%; margin-top: 12px; }
+        .btn-midi-save:hover { background-color: #117a65; }
+        .midi-panel { border-top: 1px solid #eee; margin-top: 12px; padding-top: 12px; }
+        .midi-panel-title { font-size: 0.88rem; font-weight: bold; color: #555; margin-bottom: 10px; }
+        .midi-note-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+        .midi-note-row input { width: 90px; padding: 6px; font-size: 1rem; }
+        .midi-note-name { font-size: 0.85rem; color: #666; }
+        .midi-note { font-size: 0.78rem; color: #856404; background: #fff3cd; border: 1px solid #ffeeba; border-radius: 4px; padding: 8px 10px; margin-top: 10px; line-height: 1.5; }
         .btn-toggle { background-color: #f0f0f0; color: #555; border: 1px solid #ccc; width: 100%; text-align: left; display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; border-radius: 6px; font-size: 0.9rem; font-weight: normal; margin-top: 4px; }
         .btn-toggle:hover { background-color: #e2e2e2; color: #333; }
         .sw-section { background: #fff; padding: 15px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); margin-bottom: 20px; }
@@ -226,6 +234,33 @@
                     </div>
                 </div>
             </div>
+
+            <button id="midiToggleBtn" class="btn-toggle" style="display:none;" onclick="toggleMidiPanel()">
+                MIDIモードに切り替え
+                <span id="midiChevron">▼</span>
+            </button>
+
+            <div id="midiSettings" style="display:none;" class="midi-panel">
+                <div class="midi-panel-title">MIDI設定</div>
+                <div class="midi-note-row">
+                    <label for="midiNoteInput">ノート番号</label>
+                    <input type="number" id="midiNoteInput" min="0" max="127" value="49"
+                           oninput="updateMidiNoteName()">
+                    <span id="midiNoteName" class="midi-note-name"></span>
+                </div>
+                <div class="midi-note-row">
+                    <label for="midiModeSelect">動作</label>
+                    <select id="midiModeSelect">
+                        <option value="AMOS1ON">単打</option>
+                        <option value="AMOR1ON">連打</option>
+                    </select>
+                </div>
+                <button id="midiSaveBtn" class="btn-midi-save" onclick="saveMidiCfg()">本設定でMIDIモードに切り替え</button>
+                <div class="midi-note">
+                    アームが叩ける速さは毎秒3〜5回程度が上限です。ハイハットなど細かい刻みのパートには追従できません。<br>
+                    音名の表記はアプリによって異なります（番号60をC3と表示するアプリとC4と表示するアプリがあります）。
+                </div>
+            </div>
         </div>
 
         <!-- 乾電池 自動OFF 設定 (v2.0.0以降のみ表示) -->
@@ -281,7 +316,7 @@
         let caps = 0;
         let verResReceived = false;
         let configLoaded = false;
-        let bleMode = 0; // 0=ArmOneDa, 1=BTRelay
+        let bleMode = 0; // 0=ArmOneDa, 1=BTRelay, 2=MIDI
         let fwMajor = 0; // ファームメジャーバージョン (1=Ver1系, 2=Ver2系)
         let fwStr = '';  // ファームバージョン文字列 (利用ログ用)
         let bleConnectLogged = false;
@@ -315,8 +350,9 @@
         }
 
         // showAll=true は絞り込み無しで機器を選ばせる脱出口。
-        // Bluefy(iOS)は filters 配列の先頭要素しか評価しないらしく、2番目のNUSフィルタが無視されて
-        // BT Relayモードのデバイスがチューザーに出ないため。
+        // Bluefy(iOS)は filters 配列の先頭要素しか評価しないため、FaceSwitchモードは
+        // 絞り込み検索では出てこない。ArmOneDaモードとMIDIモードは名前の共通接頭辞
+        // "ArmOneDa-" で先頭要素にまとめてあるので絞り込みでも出る。
         // optionalServices は acceptAllDevices 時に filters 由来のサービス許可が無くなるので両方明示する。
         async function pickDevice(showAll) {
             return await navigator.bluetooth.requestDevice(showAll ? {
@@ -324,8 +360,8 @@
                 optionalServices: [SERVICE_UUID, NUS_SERVICE_UUID]
             } : {
                 filters: [
-                    { services: [SERVICE_UUID] },
-                    { services: [NUS_SERVICE_UUID] }
+                    { namePrefix: "ArmOneDa-" },    // ArmOneDaモード + MIDIモード
+                    { name: "BT Relay board" }      // FaceSwitchモード
                 ],
                 optionalServices: [SERVICE_UUID, NUS_SERVICE_UUID]
             });
@@ -341,7 +377,7 @@
                 if (navigator.bluetooth.getDevices && !showAll) {
                     const devices = await navigator.bluetooth.getDevices();
                     bluetoothDevice = devices.find(d =>
-                        d.name && (d.name.startsWith(DEVICE_PREFIX) || d.name === FS_DEVICE_NAME)
+                        d.name && (d.name.startsWith("ArmOneDa-") || d.name === FS_DEVICE_NAME)
                     ) || null;
                     if (bluetoothDevice) { fromCache = true; log("既知のデバイスへ接続中..."); }
                 }
@@ -384,10 +420,34 @@
                 txChar.addEventListener('characteristicvaluechanged', onNotify);
                 log("通知登録完了");
 
+                // MIDIモードでもArmOneDaサービスが存在するため、サービスの有無だけでは
+                // モード0と誤認する。ファームへ問い合わせて確定させる。
+                // 応答が無い場合は旧ファームなので上のサービス判定をそのまま使う。
+                await queryBleMode();
+
                 updateUIState(true);
                 log("接続成功! 設定を読込中...");
                 await sendVerGet();
             } catch (e) { log("エラー: " + e); }
+        }
+
+        let modeResReceived = false;
+        // #AMOMODEGET! への応答有無で判定する、接続中の機体がMIDIモードに対応しているかどうかのフラグ。
+        // 旧ファーム(v1.3.2)はこのコマンド自体を認識せず無応答となるため、応答の有無がそのままケーパビリティの証明になる。
+        let midiModeSupported = false;
+
+        async function queryBleMode() {
+            // モード判定は接続成功のための必須条件ではないため、GATT書込失敗時も
+            // ここで握りつぶしてサービス判定ベースの bleMode のまま接続処理を継続させる。
+            try {
+                modeResReceived = false;
+                await sendCommand('#AMOMODEGET!');
+                await new Promise(resolve => setTimeout(resolve, 600));
+                midiModeSupported = modeResReceived;
+                if (!modeResReceived) log("モード応答なし（旧ファーム）");
+            } catch (e) {
+                log("モード問い合わせ失敗: " + e);
+            }
         }
 
         async function sendVerGet() {
@@ -436,6 +496,10 @@
                 document.getElementById("btRelaySettings").style.display = "none";
                 document.getElementById("btRelayChevron").textContent = "▼";
                 document.getElementById("btRelayToggleBtn").style.display = "";
+                document.getElementById("midiSettings").style.display = "none";
+                document.getElementById("midiChevron").textContent = "▼";
+                document.getElementById("midiToggleBtn").style.display = "none";
+                midiModeSupported = false;
                 fwMajor = 0;
                 aoSelectedSec = null;
                 document.getElementById("autoOffSection").style.display = "none";
@@ -455,6 +519,32 @@
             const toAOBtn     = document.getElementById('toArmOneDaBtn');
             const toggleBtn   = document.getElementById('btRelayToggleBtn');
             const devName = bluetoothDevice.name || "";
+            const midiToggleBtn = document.getElementById('midiToggleBtn');
+            if (bleMode === 2) {
+                const displayName = devName.startsWith("ArmOneDa-MIDI-") ? devName : "ArmOneDa MIDI";
+                statusText.innerText = "接続済み: " + displayName;
+                statusText.style.color = "#28a745";
+                badge.textContent = 'MIDIモード';
+                badge.className = 'mode-badge mode-badge-fs';
+                badge.style.display = '';
+                toAOBtn.style.display = '';
+                midiToggleBtn.style.display = 'none';
+                document.getElementById('midiSettings').style.display = 'block';
+                document.getElementById('midiChevron').textContent = '▲';
+                document.getElementById('midiSaveBtn').textContent = '本設定でMIDI設定を保存';
+                toggleBtn.style.display = 'none';
+                document.getElementById('btRelaySettings').style.display = 'none';
+                sendCommand('#AMOMIDICFGGET!');
+                return;
+            }
+            if (midiModeSupported) {
+                midiToggleBtn.style.display = '';
+            } else {
+                midiToggleBtn.style.display = 'none';
+                document.getElementById('midiSettings').style.display = 'none';
+                document.getElementById('midiChevron').textContent = '▼';
+            }
+            document.getElementById('midiSaveBtn').textContent = '本設定でMIDIモードに切り替え';
             if (bleMode === 1) {
                 const displayName = (devName === FS_DEVICE_NAME) ? devName : FS_DEVICE_NAME;
                 statusText.innerText = "接続済み: " + displayName;
@@ -518,6 +608,23 @@
                 log("設定リセット完了。設定を再読込中...");
                 await sendCommand('#AMOCFGGET!');
                 isLoadingSettings = false;
+            }
+            if (msg.startsWith('#AMOMODERES:')) {
+                modeResReceived = true;
+                bleMode = parseInt(msg.slice(12, -1), 10) || 0;
+                updateBleMode();
+                log("BLEモード: " + bleMode);
+                return;
+            }
+            if (msg.startsWith('#AMOMIDICFGRES:')) {
+                const parts = msg.slice(15, -1).split(',');
+                parseMidiCfg(parseInt(parts[0], 10), parts[1] || 'AMOS1ON');
+                log("MIDI設定読込: note=" + parts[0] + " cmd=" + parts[1]);
+                return;
+            }
+            if (msg.startsWith('#AMOMIDICFGOK!')) {
+                log("MIDI設定 保存完了");
+                return;
             }
             if (msg.startsWith('#AMOFSCMDRES:')) {
                 const cmd = msg.slice(13, -1);
@@ -718,6 +825,52 @@
             } else {
                 await sendCommand('#AMOFSCMD:' + mode + dir + '!');
                 amoLog('settings_save_btrelay', Object.assign(amoCtx(), { fs_mode: mode, fs_dir: dir }));
+            }
+        }
+
+        const NOTE_NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+
+        function updateMidiNoteName() {
+            const n = parseInt(document.getElementById('midiNoteInput').value, 10);
+            const el = document.getElementById('midiNoteName');
+            if (isNaN(n) || n < 0 || n > 127) { el.textContent = ''; return; }
+            // C4=60 表記。アプリによってはC3と表示される
+            el.textContent = '(' + NOTE_NAMES[n % 12] + (Math.floor(n / 12) - 1) + ')';
+        }
+
+        function toggleMidiPanel() {
+            const panel   = document.getElementById('midiSettings');
+            const chevron = document.getElementById('midiChevron');
+            const opening = panel.style.display === 'none';
+            panel.style.display = opening ? 'block' : 'none';
+            chevron.textContent = opening ? '▲' : '▼';
+        }
+
+        function parseMidiCfg(note, cmd) {
+            document.getElementById('midiNoteInput').value = note;
+            document.getElementById('midiModeSelect').value =
+                cmd.startsWith('AMOR1') ? 'AMOR1ON' : 'AMOS1ON';
+            updateMidiNoteName();
+        }
+
+        async function saveMidiCfg() {
+            const note = parseInt(document.getElementById('midiNoteInput').value, 10);
+            if (isNaN(note) || note < 0 || note > 127) {
+                alert('ノート番号は0〜127で入力してください。');
+                return;
+            }
+            const cmd = document.getElementById('midiModeSelect').value;
+            if (bleMode !== 2) {
+                if (!confirm('MIDIモードに切り替えます。\nデバイスが再起動されます。よろしいですか？')) return;
+                await sendCommand('#AMOMIDICFG:' + note + ',' + cmd + '!');
+                amoLog('settings_save_midi', Object.assign(amoCtx(), { note: note, cmd: cmd }));
+                await new Promise(r => setTimeout(r, 300));
+                await sendCommand('#AMOBLEMODE:2!');
+                log('MIDIモードへ切替中... デバイスが再起動します');
+            } else {
+                await sendCommand('#AMOMIDICFG:' + note + ',' + cmd + '!');
+                amoLog('settings_save_midi', Object.assign(amoCtx(), { note: note, cmd: cmd }));
+                log('MIDI設定を保存しました');
             }
         }
 
