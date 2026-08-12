@@ -204,16 +204,21 @@
         <!-- BLEモード変更設定 -->
         <div class="sw-section">
             <h2>BLEモード変更設定</h2>
+            <p class="ao-current">現在のモード: <span id="bleModeCurrentText">---</span></p>
+            <p class="ao-label">設定するモードを選択</p>
+            <div class="ao-scroll" id="bleModeSelector"></div>
 
-            <!-- アコーディオントグル -->
-            <button id="btRelayToggleBtn" class="btn-toggle" onclick="toggleBTRelayPanel()">
-                BT Relayモードに切り替え
-                <span id="btRelayChevron">▼</span>
-            </button>
+            <!-- ArmOneDaモード パネル -->
+            <div id="modePanel0" class="bt-relay-panel">
+                <div class="bt-relay-panel-title">ArmOneDaモード</div>
+                <div class="relay-note">
+                    本モードに切り替えると、アームワンダAIR専用のBLE通信機能（スマホ/PC操作コントローラアプリで使用）が使える様になります。設定項目はありません。
+                </div>
+            </div>
 
-            <!-- BT Relay設定パネル: 初期非表示 -->
-            <div id="btRelaySettings" style="display:none;" class="bt-relay-panel">
-                <div class="bt-relay-panel-title">BT Relay設定</div>
+            <!-- BT Relay(顔スイッチ)モード パネル -->
+            <div id="modePanel1" class="bt-relay-panel" style="display:none;">
+                <div class="bt-relay-panel-title">BT Relay(顔スイッチ)モード設定</div>
                 <div class="chip-row">
                     <label>振りモード</label>
                     <div class="chip-group" id="fs_mode_group"></div>
@@ -224,15 +229,10 @@
                     <div class="chip-group" id="fs_dir_group"></div>
                     <input type="hidden" id="fs_dir" value="ON">
                 </div>
-                <button id="btRelaySaveBtn" class="btn-relay-save" onclick="saveBtRelayCmd()">本設定でBT Relayモードに切り替え</button>
             </div>
 
-            <button id="midiToggleBtn" class="btn-toggle" style="display:none;" onclick="toggleMidiPanel()">
-                MIDIモードに切り替え
-                <span id="midiChevron">▼</span>
-            </button>
-
-            <div id="midiSettings" style="display:none;" class="midi-panel">
+            <!-- MIDIモード パネル -->
+            <div id="modePanel2" class="midi-panel" style="display:none;">
                 <div class="midi-panel-title">MIDI設定</div>
                 <div class="midi-note-row">
                     <label for="midiNoteInput">ノート番号</label>
@@ -247,20 +247,13 @@
                         <option value="AMOR1ON">連打</option>
                     </select>
                 </div>
-                <button id="midiSaveBtn" class="btn-midi-save" onclick="saveMidiCfg()">本設定でMIDIモードに切り替え</button>
                 <div class="midi-note">
                     アームが叩ける速さは毎秒3〜5回程度が上限です。ハイハットなど細かい刻みのパートには追従できません。<br>
                     音名の表記はアプリによって異なります（番号60をC3と表示するアプリとC4と表示するアプリがあります）。
                 </div>
             </div>
 
-            <!-- アームワンダBLEへ切り替え: ArmOneDaモード以外で接続時のみ表示 -->
-            <div id="toArmOneDaBtn" style="display:none;">
-                <button class="btn-mode-back" onclick="switchToArmOneDa()">アームワンダBLEモードに切り替え</button>
-                <div class="relay-note">
-                    本切り替えを行いアームワンダBLEモードに切り替えた場合、アームワンダAIR専用のBLE通信機能が使える様になります
-                </div>
-            </div>
+            <button class="btn-save" onclick="applyModeSettings()">設定を反映</button>
         </div>
 
         <!-- 乾電池 自動OFF 設定 (v2.0.0以降のみ表示) -->
@@ -316,7 +309,8 @@
         let caps = 0;
         let verResReceived = false;
         let configLoaded = false;
-        let bleMode = 0; // 0=ArmOneDa, 1=BTRelay, 2=MIDI
+        let bleMode = 0; // 0=ArmOneDa, 1=BTRelay, 2=MIDI (デバイスの現在モード)
+        let selectedBleMode = null; // UIで選択中のモード。null=未初期化(接続後にbleModeで初期化)
         let fwMajor = 0; // ファームメジャーバージョン (1=Ver1系, 2=Ver2系)
         let fwStr = '';  // ファームバージョン文字列 (利用ログ用)
         let bleConnectLogged = false;
@@ -370,6 +364,7 @@
         async function connectDevice(showAll) {
             try {
                 bleMode = 0;
+                selectedBleMode = null;
                 bleConnectLogged = false;
                 bluetoothDevice = null;
                 let fromCache = false;
@@ -492,14 +487,13 @@
                 badge.textContent = "";
                 badge.style.display = "none";
                 badge.className = "mode-badge";
-                document.getElementById("toArmOneDaBtn").style.display = "none";
-                document.getElementById("btRelaySettings").style.display = "none";
-                document.getElementById("btRelayChevron").textContent = "▼";
-                document.getElementById("btRelayToggleBtn").style.display = "";
-                document.getElementById("midiSettings").style.display = "none";
-                document.getElementById("midiChevron").textContent = "▼";
-                document.getElementById("midiToggleBtn").style.display = "none";
+                selectedBleMode = null;
                 midiModeSupported = false;
+                document.getElementById("bleModeCurrentText").textContent = "---";
+                document.getElementById("bleModeSelector").innerHTML = "";
+                document.getElementById("modePanel0").style.display = "block";
+                document.getElementById("modePanel1").style.display = "none";
+                document.getElementById("modePanel2").style.display = "none";
                 fwMajor = 0;
                 aoSelectedSec = null;
                 document.getElementById("autoOffSection").style.display = "none";
@@ -513,31 +507,13 @@
             }
         }
 
-        function updateBleMode() {
-            const statusText  = document.getElementById('statusText');
-            const badge       = document.getElementById('currentModeBadge');
-            const toAOBtn     = document.getElementById('toArmOneDaBtn');
-            const toggleBtn   = document.getElementById('btRelayToggleBtn');
-            const devName = bluetoothDevice.name || "";
-            const midiToggleBtn = document.getElementById('midiToggleBtn');
+        const BLE_MODE_LABELS = ['アームワンダBLEモード', 'BT Relay(顔スイッチ)モード', 'MIDIモード'];
+        const BLE_MODE_CURRENT_LABELS = ['ArmOneDa BLEモード', 'BT Relayモード', 'MIDIモード'];
 
-            // MIDIモード中はトグルではなく、現在のMIDI設定を編集するパネルとして常時展開する
-            if (bleMode === 2) {
-                midiToggleBtn.style.display = 'none';
-                document.getElementById('midiSettings').style.display = 'block';
-                document.getElementById('midiChevron').textContent = '▲';
-                document.getElementById('midiSaveBtn').textContent = '本設定でMIDI設定を保存';
-                sendCommand('#AMOMIDICFGGET!');
-            } else {
-                if (midiModeSupported) {
-                    midiToggleBtn.style.display = '';
-                } else {
-                    midiToggleBtn.style.display = 'none';
-                    document.getElementById('midiSettings').style.display = 'none';
-                    document.getElementById('midiChevron').textContent = '▼';
-                }
-                document.getElementById('midiSaveBtn').textContent = '本設定でMIDIモードに切り替え';
-            }
+        function updateBleMode() {
+            const statusText = document.getElementById('statusText');
+            const badge      = document.getElementById('currentModeBadge');
+            const devName = bluetoothDevice.name || "";
 
             if (bleMode === 2) {
                 const displayName = devName.startsWith("ArmOneDa-MIDI-") ? devName : "ArmOneDa MIDI";
@@ -546,9 +522,6 @@
                 badge.textContent = 'MIDIモード';
                 badge.className = 'mode-badge mode-badge-fs';
                 badge.style.display = '';
-                toAOBtn.style.display = 'block';
-                document.getElementById('btRelaySaveBtn').textContent = '本設定でBT Relayモードに切り替え';
-                toggleBtn.style.display = '';
             } else if (bleMode === 1) {
                 const displayName = (devName === FS_DEVICE_NAME) ? devName : FS_DEVICE_NAME;
                 statusText.innerText = "接続済み: " + displayName;
@@ -556,11 +529,6 @@
                 badge.textContent = 'BT Relayモード';
                 badge.className = 'mode-badge mode-badge-fs';
                 badge.style.display = 'inline-block';
-                toAOBtn.style.display = 'block';
-                document.getElementById('btRelaySettings').style.display = 'block';
-                document.getElementById('btRelayChevron').textContent = '▲';
-                document.getElementById('btRelaySaveBtn').textContent = '本設定でBT Relayモード保存';
-                toggleBtn.style.display = 'none';
             } else {
                 const displayName = devName.startsWith(DEVICE_PREFIX) ? devName : "ArmOneDa BLE";
                 statusText.innerText = "接続済み: " + displayName;
@@ -568,18 +536,32 @@
                 badge.textContent = 'ArmOneDa BLEモード';
                 badge.className = 'mode-badge mode-badge-ao';
                 badge.style.display = 'inline-block';
-                toAOBtn.style.display = 'none';
-                document.getElementById('btRelaySaveBtn').textContent = '本設定でBT Relayモードに切り替え';
-                toggleBtn.style.display = '';
             }
+
+            // 選択中モードは接続後の初回のみデバイスの現在モードに合わせる
+            if (selectedBleMode === null) selectedBleMode = bleMode;
+            document.getElementById('bleModeCurrentText').textContent = BLE_MODE_CURRENT_LABELS[bleMode] || '---';
+            renderBleModeSelector();
+            updateModePanelVisibility();
         }
 
-        function toggleBTRelayPanel() {
-            const panel   = document.getElementById('btRelaySettings');
-            const chevron = document.getElementById('btRelayChevron');
-            const isOpen  = panel.style.display !== 'none';
-            panel.style.display = isOpen ? 'none' : 'block';
-            chevron.textContent = isOpen ? '▼' : '▲';
+        function renderBleModeSelector() {
+            const group = document.getElementById('bleModeSelector');
+            group.innerHTML = '';
+            BLE_MODE_LABELS.forEach((label, idx) => {
+                if (idx === 2 && !midiModeSupported) return; // MIDI非対応機ではMIDIを選ばせない
+                const btn = document.createElement('button');
+                btn.className = 'ao-chip' + (idx === selectedBleMode ? ' ao-chip-active' : '');
+                btn.textContent = label;
+                btn.onclick = () => { selectedBleMode = idx; renderBleModeSelector(); updateModePanelVisibility(); };
+                group.appendChild(btn);
+            });
+        }
+
+        function updateModePanelVisibility() {
+            for (const i of [0, 1, 2]) {
+                document.getElementById('modePanel' + i).style.display = (i === selectedBleMode) ? 'block' : 'none';
+            }
         }
 
         async function onNotify(event) {
@@ -600,6 +582,7 @@
                 updateAutoOffVisibility();
                 await sendCommand('#AMOCFGGET!');
                 await sendCommand('#AMOFSCMDGET!');
+                if (midiModeSupported) await sendCommand('#AMOMIDICFGGET!');
                 if (fwMajor >= 2) await sendCommand('#AMOAOGET!');
             }
             if (msg.startsWith('#AMOCFGRES:')) {
@@ -816,22 +799,6 @@
             log(`SW${sw} 保存完了`);
         }
 
-        async function saveBtRelayCmd() {
-            const mode = document.getElementById('fs_mode').value;
-            const dir  = document.getElementById('fs_dir').value;
-            if (bleMode !== 1) {
-                if (!confirm('BT Relayモードに切り替えます。\nデバイスが再起動されます。よろしいですか？')) return;
-                await sendCommand('#AMOFSCMD:' + mode + dir + '!');
-                amoLog('settings_save_btrelay', Object.assign(amoCtx(), { fs_mode: mode, fs_dir: dir }));
-                await new Promise(r => setTimeout(r, 300));
-                await sendCommand('#AMOBLEMODE:1!');
-                log('BT Relayモードへ切替中... デバイスが再起動します');
-            } else {
-                await sendCommand('#AMOFSCMD:' + mode + dir + '!');
-                amoLog('settings_save_btrelay', Object.assign(amoCtx(), { fs_mode: mode, fs_dir: dir }));
-            }
-        }
-
         const NOTE_NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
 
         function updateMidiNoteName() {
@@ -842,14 +809,6 @@
             el.textContent = '(' + NOTE_NAMES[n % 12] + (Math.floor(n / 12) - 1) + ')';
         }
 
-        function toggleMidiPanel() {
-            const panel   = document.getElementById('midiSettings');
-            const chevron = document.getElementById('midiChevron');
-            const opening = panel.style.display === 'none';
-            panel.style.display = opening ? 'block' : 'none';
-            chevron.textContent = opening ? '▲' : '▼';
-        }
-
         function parseMidiCfg(note, cmd) {
             document.getElementById('midiNoteInput').value = note;
             document.getElementById('midiModeSelect').value =
@@ -857,31 +816,55 @@
             updateMidiNoteName();
         }
 
-        async function saveMidiCfg() {
-            const note = parseInt(document.getElementById('midiNoteInput').value, 10);
-            if (isNaN(note) || note < 0 || note > 127) {
-                alert('ノート番号は0〜127で入力してください。');
+        // 「送るコマンドがモード切替を伴うか」は selectedBleMode !== bleMode のみで決まる。
+        // 特定モードからの遷移だけを特別扱いしない(過去のバグの再発防止)。
+        async function applyModeSettings() {
+            const willSwitch = selectedBleMode !== bleMode;
+
+            if (selectedBleMode === 1) {
+                const mode = document.getElementById('fs_mode').value;
+                const dir  = document.getElementById('fs_dir').value;
+                if (willSwitch && !confirm('BT Relayモードに切り替えます。\nデバイスが再起動されます。よろしいですか？')) return;
+                await sendCommand('#AMOFSCMD:' + mode + dir + '!');
+                amoLog('settings_save_btrelay', Object.assign(amoCtx(), { fs_mode: mode, fs_dir: dir }));
+                if (willSwitch) {
+                    await new Promise(r => setTimeout(r, 300));
+                    await sendCommand('#AMOBLEMODE:1!');
+                    log('BT Relayモードへ切替中... デバイスが再起動します');
+                } else {
+                    log('BT Relay設定を保存しました');
+                }
                 return;
             }
-            const cmd = document.getElementById('midiModeSelect').value;
-            if (bleMode !== 2) {
-                if (!confirm('MIDIモードに切り替えます。\nデバイスが再起動されます。よろしいですか？')) return;
-                await sendCommand('#AMOMIDICFG:' + note + ',' + cmd + '!');
-                amoLog('settings_save_midi', Object.assign(amoCtx(), { note: note, cmd: cmd }));
-                await new Promise(r => setTimeout(r, 300));
-                await sendCommand('#AMOBLEMODE:2!');
-                log('MIDIモードへ切替中... デバイスが再起動します');
-            } else {
-                await sendCommand('#AMOMIDICFG:' + note + ',' + cmd + '!');
-                amoLog('settings_save_midi', Object.assign(amoCtx(), { note: note, cmd: cmd }));
-                log('MIDI設定を保存しました');
-            }
-        }
 
-        async function switchToArmOneDa() {
-            if (!confirm('アームワンダBLEモードに切り替えます。\nデバイスが再起動されます。よろしいですか？')) return;
-            await sendCommand('#AMOBLEMODE:0!');
-            log('アームワンダBLEモードへ切替中... デバイスが再起動します');
+            if (selectedBleMode === 2) {
+                const note = parseInt(document.getElementById('midiNoteInput').value, 10);
+                if (isNaN(note) || note < 0 || note > 127) {
+                    alert('ノート番号は0〜127で入力してください。');
+                    return;
+                }
+                const cmd = document.getElementById('midiModeSelect').value;
+                if (willSwitch && !confirm('MIDIモードに切り替えます。\nデバイスが再起動されます。よろしいですか？')) return;
+                await sendCommand('#AMOMIDICFG:' + note + ',' + cmd + '!');
+                amoLog('settings_save_midi', Object.assign(amoCtx(), { note: note, cmd: cmd }));
+                if (willSwitch) {
+                    await new Promise(r => setTimeout(r, 300));
+                    await sendCommand('#AMOBLEMODE:2!');
+                    log('MIDIモードへ切替中... デバイスが再起動します');
+                } else {
+                    log('MIDI設定を保存しました');
+                }
+                return;
+            }
+
+            // selectedBleMode === 0 (ArmOneDa): 設定項目が無いため、モード切替の要否のみ判定する
+            if (willSwitch) {
+                if (!confirm('アームワンダBLEモードに切り替えます。\nデバイスが再起動されます。よろしいですか？')) return;
+                await sendCommand('#AMOBLEMODE:0!');
+                log('アームワンダBLEモードへ切替中... デバイスが再起動します');
+            } else {
+                alert('ArmOneDaモードには設定項目がありません。');
+            }
         }
 
         async function resetSettings() {
