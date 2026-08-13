@@ -243,8 +243,8 @@
             <div id="modePanel2" class="midi-panel" style="display:none;">
                 <div class="midi-panel-title">MIDI設定</div>
                 <div class="form-row">
-                    <label for="midiDrumSelect">DropToneドラムキットから選ぶ</label>
-                    <select id="midiDrumSelect" data-dt-instrument="10" onchange="selectMidiDrum()">
+                    <label for="midiDrumSelect">DropToneプリセットから選ぶ</label>
+                    <select id="midiDrumSelect" onchange="selectMidiDrum()">
                         <option value="">-- 選択 --</option>
                     </select>
                 </div>
@@ -255,7 +255,7 @@
                     <span id="midiNoteName" class="midi-note-name"></span>
                 </div>
                 <div class="midi-note-row">
-                    <label>DropTone音色</label>
+                    <label>DropTone表記</label>
                     <span id="midiDrumName" class="midi-note-name"></span>
                 </div>
                 <div class="midi-note-row">
@@ -841,7 +841,8 @@
 
         const NOTE_NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
 
-        // DropTone(Droplet Project) DrumSet(instrument 10) の公式ノート割当。48-84の37音、抜け無し。
+        // DropTone(Droplet Project) 「ドラムセット」音色の公式ノート割当。48-71の24音、抜け無し。
+        // 72以降(ボンゴ1〜13)は標準キットの範疇外のため対象外(ノート番号欄には直接入力可)。
         const DROPTONE_DRUMS = [
             [48,'バスドラム'],       [49,'サイドスティック'],  [50,'スネアドラム1'],
             [51,'ハンドクラップ'],   [52,'スネアドラム2'],     [53,'フロアタム1'],
@@ -851,18 +852,26 @@
             [63,'ライドシンバル(エッジ)1'], [64,'チャイナシンバル'], [65,'ライドシンバル(カップ)'],
             [66,'タンバリン'],       [67,'スプラッシュシンバル'], [68,'カウベル'],
             [69,'クラッシュシンバル2'], [70,'ビブラスラップ'],  [71,'ライドシンバル(エッジ)2'],
-            [72,'ボンゴ1'],          [73,'ボンゴ2'],           [74,'ボンゴ3'],
-            [75,'ボンゴ4'],          [76,'ボンゴ5'],           [77,'ボンゴ6'],
-            [78,'ボンゴ7'],          [79,'ボンゴ8'],           [80,'ボンゴ9'],
-            [81,'ボンゴ10'],         [82,'ボンゴ11'],          [83,'ボンゴ12'],
-            [84,'ボンゴ13'],
         ];
         const DROPTONE_DRUM_MAP = Object.fromEntries(DROPTONE_DRUMS.map(([n, name]) => [n, name]));
 
+        // DropTone「ハンドベル」音色のドレミファソラシド2オクターブ分(C4〜C6)。
+        // 72はオクターブの境目(下オクターブの「ド」=上オクターブの「ド」)で重複するため1回だけ載せる。
+        const DROPTONE_BELLS = [
+            [60,'ド','C4'], [62,'レ','D4'], [64,'ミ','E4'], [65,'ファ','F4'],
+            [67,'ソ','G4'], [69,'ラ','A4'], [71,'シ','B4'], [72,'ド','C5'],
+            [74,'レ','D5'], [76,'ミ','E5'], [77,'ファ','F5'], [79,'ソ','G5'],
+            [81,'ラ','A5'], [83,'シ','B5'], [84,'ド','C6'],
+        ];
+        const DROPTONE_BELL_MAP = Object.fromEntries(DROPTONE_BELLS.map(([n, solfa, name]) => [n, solfa + '(' + name + ')']));
+
         function renderDrumPicker() {
             const sel = document.getElementById('midiDrumSelect');
+            const drumOptions = DROPTONE_DRUMS.map(([n, name]) => `<option value="${n}">${n}: ${name}</option>`).join('');
+            const bellOptions = DROPTONE_BELLS.map(([n, solfa, name]) => `<option value="${n}">${n}: ${solfa}(${name})</option>`).join('');
             sel.innerHTML = '<option value="">-- 選択 --</option>' +
-                DROPTONE_DRUMS.map(([n, name]) => `<option value="${n}">${n}: ${name}</option>`).join('');
+                `<optgroup label="DropTone「ドラムセット」の音色(48〜71)">${drumOptions}</optgroup>` +
+                `<optgroup label="DropTone「ハンドベル」の音階(60〜84)">${bellOptions}</optgroup>`;
         }
 
         // ピッカーはノート番号欄への入力補助であり、選択すると欄を書き換えるだけ。送信対象は常にノート番号欄。
@@ -886,9 +895,16 @@
             }
             // C4=60 表記。アプリによってはC3と表示される
             el.textContent = '(' + NOTE_NAMES[n % 12] + (Math.floor(n / 12) - 1) + ')';
+
+            // 同じ番号がドラムセットとハンドベルで異なる意味を持つことがある(例: 60,69,71)。
+            // デバイスは番号しか見ないため、片方に決め打ちせず該当する読みを全て並べる。
             const drumName = DROPTONE_DRUM_MAP[n];
-            drumEl.textContent = drumName || '';
-            sel.value = drumName ? String(n) : '';
+            const bellName = DROPTONE_BELL_MAP[n];
+            const readings = [];
+            if (drumName) readings.push('ドラムセット: ' + drumName);
+            if (bellName) readings.push('ハンドベル: ' + bellName);
+            drumEl.textContent = readings.join(' / ');
+            sel.value = (drumName || bellName) ? String(n) : '';
         }
 
         function parseMidiCfg(note, cmd) {
