@@ -38,6 +38,10 @@
         .midi-note { font-size: 0.78rem; color: #856404; background: #fff3cd; border: 1px solid #ffeeba; border-radius: 4px; padding: 8px 10px; margin-top: 10px; line-height: 1.5; }
         .btn-toggle { background-color: #f0f0f0; color: #555; border: 1px solid #ccc; width: 100%; text-align: left; display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; border-radius: 6px; font-size: 0.9rem; font-weight: normal; margin-top: 4px; }
         .btn-toggle:hover { background-color: #e2e2e2; color: #333; }
+        .ble-mode-options { border: 1px solid #ccc; border-top: none; border-radius: 0 0 6px 6px; margin: -4px 0 8px; overflow: hidden; }
+        .ble-mode-option { display: block; width: 100%; text-align: left; background: #fff; color: #555; border: none; border-top: 1px solid #eee; padding: 10px 14px; font-size: 0.9rem; font-weight: normal; cursor: pointer; touch-action: manipulation; }
+        .ble-mode-option:hover { background: #f0f4ff; }
+        .ble-mode-option-active { background: #007bff; color: #fff; font-weight: bold; }
         .sw-section { background: #fff; padding: 15px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); margin-bottom: 20px; }
         .form-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
         .form-row label { font-size: 0.9rem; color: #555; flex: 1; }
@@ -206,7 +210,11 @@
             <h2>BLEモード変更設定</h2>
             <p class="ao-current">現在のモード: <span id="bleModeCurrentText">---</span></p>
             <p class="ao-label">設定するモードを選択</p>
-            <div class="ao-scroll" id="bleModeSelector"></div>
+            <button id="bleModeToggleBtn" class="btn-toggle" onclick="toggleBleModeSelector()">
+                <span id="bleModeToggleLabel">---</span>
+                <span id="bleModeChevron">▼</span>
+            </button>
+            <div id="bleModeOptions" class="ble-mode-options" style="display:none;"></div>
 
             <!-- ArmOneDaモード パネル -->
             <div id="modePanel0" class="bt-relay-panel">
@@ -234,11 +242,21 @@
             <!-- MIDIモード パネル -->
             <div id="modePanel2" class="midi-panel" style="display:none;">
                 <div class="midi-panel-title">MIDI設定</div>
+                <div class="form-row">
+                    <label for="midiDrumSelect">DropToneドラムキットから選ぶ</label>
+                    <select id="midiDrumSelect" data-dt-instrument="10" onchange="selectMidiDrum()">
+                        <option value="">-- 選択 --</option>
+                    </select>
+                </div>
                 <div class="midi-note-row">
                     <label for="midiNoteInput">ノート番号</label>
                     <input type="number" id="midiNoteInput" min="0" max="127" value="61"
                            oninput="updateMidiNoteName()">
                     <span id="midiNoteName" class="midi-note-name"></span>
+                </div>
+                <div class="midi-note-row">
+                    <label>DropTone音色</label>
+                    <span id="midiDrumName" class="midi-note-name"></span>
                 </div>
                 <div class="midi-note-row">
                     <label for="midiModeSelect">動作</label>
@@ -249,7 +267,7 @@
                 </div>
                 <div class="midi-note">
                     アームが叩ける速さは毎秒3〜5回程度が上限です。ハイハットなど細かい刻みのパートには追従できません。<br>
-                    音名の表記はアプリによって異なります（番号60をC3と表示するアプリとC4と表示するアプリがあります）。
+                    音名の表記はアプリによって異なります（番号60をC3と表示するアプリとC4と表示するアプリがあります）。DropToneは本画面と同じ表記（60=C4）なので、DropTone利用時は表記の食い違いはありません。
                 </div>
             </div>
 
@@ -311,6 +329,7 @@
         let configLoaded = false;
         let bleMode = 0; // 0=ArmOneDa, 1=BTRelay, 2=MIDI (デバイスの現在モード)
         let selectedBleMode = null; // UIで選択中のモード。null=未初期化(接続後にbleModeで初期化)
+        let bleModeExpanded = false; // モード選択リストの開閉状態
         let fwMajor = 0; // ファームメジャーバージョン (1=Ver1系, 2=Ver2系)
         let fwStr = '';  // ファームバージョン文字列 (利用ログ用)
         let bleConnectLogged = false;
@@ -489,8 +508,12 @@
                 badge.className = "mode-badge";
                 selectedBleMode = null;
                 midiModeSupported = false;
+                bleModeExpanded = false;
                 document.getElementById("bleModeCurrentText").textContent = "---";
-                document.getElementById("bleModeSelector").innerHTML = "";
+                document.getElementById("bleModeToggleLabel").textContent = "---";
+                document.getElementById("bleModeChevron").textContent = "▼";
+                document.getElementById("bleModeOptions").innerHTML = "";
+                document.getElementById("bleModeOptions").style.display = "none";
                 document.getElementById("modePanel0").style.display = "block";
                 document.getElementById("modePanel1").style.display = "none";
                 document.getElementById("modePanel2").style.display = "none";
@@ -545,16 +568,33 @@
             updateModePanelVisibility();
         }
 
+        function toggleBleModeSelector() {
+            bleModeExpanded = !bleModeExpanded;
+            renderBleModeSelector();
+        }
+
+        function selectBleMode(idx) {
+            selectedBleMode = idx;
+            bleModeExpanded = false;
+            renderBleModeSelector();
+            updateModePanelVisibility();
+        }
+
         function renderBleModeSelector() {
-            const group = document.getElementById('bleModeSelector');
-            group.innerHTML = '';
+            document.getElementById('bleModeToggleLabel').textContent =
+                (selectedBleMode !== null && BLE_MODE_LABELS[selectedBleMode]) || '---';
+            document.getElementById('bleModeChevron').textContent = bleModeExpanded ? '▲' : '▼';
+
+            const list = document.getElementById('bleModeOptions');
+            list.style.display = bleModeExpanded ? 'block' : 'none';
+            list.innerHTML = '';
             BLE_MODE_LABELS.forEach((label, idx) => {
                 if (idx === 2 && !midiModeSupported) return; // MIDI非対応機ではMIDIを選ばせない
                 const btn = document.createElement('button');
-                btn.className = 'ao-chip' + (idx === selectedBleMode ? ' ao-chip-active' : '');
+                btn.className = 'ble-mode-option' + (idx === selectedBleMode ? ' ble-mode-option-active' : '');
                 btn.textContent = label;
-                btn.onclick = () => { selectedBleMode = idx; renderBleModeSelector(); updateModePanelVisibility(); };
-                group.appendChild(btn);
+                btn.onclick = () => selectBleMode(idx);
+                list.appendChild(btn);
             });
         }
 
@@ -801,12 +841,54 @@
 
         const NOTE_NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
 
+        // DropTone(Droplet Project) DrumSet(instrument 10) の公式ノート割当。48-84の37音、抜け無し。
+        const DROPTONE_DRUMS = [
+            [48,'バスドラム'],       [49,'サイドスティック'],  [50,'スネアドラム1'],
+            [51,'ハンドクラップ'],   [52,'スネアドラム2'],     [53,'フロアタム1'],
+            [54,'ハイハット(クローズ)'], [55,'フロアタム2'],   [56,'ハイハット(フット)'],
+            [57,'ロータム1'],        [58,'ハイハット(オープン)'], [59,'ロータム2'],
+            [60,'ハイタム1'],        [61,'クラッシュシンバル1'], [62,'ハイタム2'],
+            [63,'ライドシンバル(エッジ)1'], [64,'チャイナシンバル'], [65,'ライドシンバル(カップ)'],
+            [66,'タンバリン'],       [67,'スプラッシュシンバル'], [68,'カウベル'],
+            [69,'クラッシュシンバル2'], [70,'ビブラスラップ'],  [71,'ライドシンバル(エッジ)2'],
+            [72,'ボンゴ1'],          [73,'ボンゴ2'],           [74,'ボンゴ3'],
+            [75,'ボンゴ4'],          [76,'ボンゴ5'],           [77,'ボンゴ6'],
+            [78,'ボンゴ7'],          [79,'ボンゴ8'],           [80,'ボンゴ9'],
+            [81,'ボンゴ10'],         [82,'ボンゴ11'],          [83,'ボンゴ12'],
+            [84,'ボンゴ13'],
+        ];
+        const DROPTONE_DRUM_MAP = Object.fromEntries(DROPTONE_DRUMS.map(([n, name]) => [n, name]));
+
+        function renderDrumPicker() {
+            const sel = document.getElementById('midiDrumSelect');
+            sel.innerHTML = '<option value="">-- 選択 --</option>' +
+                DROPTONE_DRUMS.map(([n, name]) => `<option value="${n}">${n}: ${name}</option>`).join('');
+        }
+
+        // ピッカーはノート番号欄への入力補助であり、選択すると欄を書き換えるだけ。送信対象は常にノート番号欄。
+        function selectMidiDrum() {
+            const sel = document.getElementById('midiDrumSelect');
+            if (!sel.value) return;
+            document.getElementById('midiNoteInput').value = sel.value;
+            updateMidiNoteName();
+        }
+
         function updateMidiNoteName() {
             const n = parseInt(document.getElementById('midiNoteInput').value, 10);
             const el = document.getElementById('midiNoteName');
-            if (isNaN(n) || n < 0 || n > 127) { el.textContent = ''; return; }
+            const drumEl = document.getElementById('midiDrumName');
+            const sel = document.getElementById('midiDrumSelect');
+            if (isNaN(n) || n < 0 || n > 127) {
+                el.textContent = '';
+                drumEl.textContent = '';
+                sel.value = '';
+                return;
+            }
             // C4=60 表記。アプリによってはC3と表示される
             el.textContent = '(' + NOTE_NAMES[n % 12] + (Math.floor(n / 12) - 1) + ')';
+            const drumName = DROPTONE_DRUM_MAP[n];
+            drumEl.textContent = drumName || '';
+            sel.value = drumName ? String(n) : '';
         }
 
         function parseMidiCfg(note, cmd) {
@@ -882,6 +964,7 @@
 
         renderAllChips();
         renderAoChips();
+        renderDrumPicker();
         updateUI();
     </script>
 </body>
