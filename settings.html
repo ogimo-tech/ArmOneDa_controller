@@ -323,6 +323,8 @@
         const FS_DEVICE_NAME   = "BT Relay board";
 
         let bluetoothDevice, rxChar, txChar;
+        // sendCommand()の全書込みをこの1本のチェーンに通して直列化する(定義はsendCommand参照)。
+        let gattChain = Promise.resolve();
         let isLoadingSettings = false;
         let caps = 0;
         let verResReceived = false;
@@ -465,13 +467,22 @@
         }
 
         async function sendVerGet() {
+            // バージョン取得はconnectDevice()の接続成功後に行う付加情報であり、
+            // ここで例外が発生してもconnectDevice()自体を失敗させてはいけない。
+            // try/finallyで包み、応答が来なかった場合(送信失敗・無応答いずれも)は
+            // 表示欄を空のまま残さず必ずフォールバック文言を書き込む。
             verResReceived = false;
-            await sendCommand('#AMOVERGET!');
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            if (!verResReceived) {
-                log("応答なし、リトライ...");
+            try {
                 await sendCommand('#AMOVERGET!');
                 await new Promise(resolve => setTimeout(resolve, 1000));
+                if (!verResReceived) {
+                    log("応答なし、リトライ...");
+                    await sendCommand('#AMOVERGET!');
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                }
+            } catch (e) {
+                log("バージョン取得エラー: " + e);
+            } finally {
                 if (!verResReceived) {
                     document.getElementById("versionText").textContent = "Ver ---  (スイッチ設定未対応版)";
                     if (!bleConnectLogged) { bleConnectLogged = true; amoLog('ble_connect', amoCtx()); }
@@ -620,10 +631,12 @@
                 updateBleMode();
                 updateUI();
                 updateAutoOffVisibility();
-                await sendCommand('#AMOCFGGET!');
-                await sendCommand('#AMOFSCMDGET!');
-                if (midiModeSupported) await sendCommand('#AMOMIDICFGGET!');
-                if (fwMajor >= 2) await sendCommand('#AMOAOGET!');
+                // 各コマンドを個別にcatchし、1つが失敗しても後続の初期化コマンドを止めない
+                // (UIが一部だけ初期化された状態で止まるのを防ぐ)。
+                await sendCommandSafe('#AMOCFGGET!');
+                await sendCommandSafe('#AMOFSCMDGET!');
+                if (midiModeSupported) await sendCommandSafe('#AMOMIDICFGGET!');
+                if (fwMajor >= 2) await sendCommandSafe('#AMOAOGET!');
             }
             if (msg.startsWith('#AMOCFGRES:')) {
                 const inner = msg.slice(11, -1);
@@ -971,11 +984,32 @@
             amoLog('settings_reset', amoCtx());
         }
 
+        // Web BluetoothはGATT操作(writeValue等)を同時に2つ以上発行すると
+        // 「GATT operation already in progress」でrejectする。接続フロー(connectDevice→
+        // queryBleMode→sendVerGet)と、応答受信のたびにonNotify()が送る追撃コマンドは
+        // 互いに非同期でタイミングが重なりうるため、全ての書込みをここでgattChainという
+        // 1本のPromiseチェーンに通して直列化し、常に前の書込み完了を待ってから次を実行する。
+        // 個々の書込みが失敗してもチェーン自体は解決状態のまま維持し、後続コマンドを巻き添えにしない。
         async function sendCommand(cmd) {
-            if (!bluetoothDevice || !bluetoothDevice.gatt.connected) return;
-            const encoder = new TextEncoder();
-            await rxChar.writeValue(encoder.encode(cmd));
-            log("送信: " + cmd);
+            gattChain = gattChain.then(async () => {
+                if (!bluetoothDevice || !bluetoothDevice.gatt.connected) return;
+                const encoder = new TextEncoder();
+                await rxChar.writeValue(encoder.encode(cmd));
+                log("送信: " + cmd);
+            }).catch(e => {
+                log("送信失敗: " + cmd + " (" + e + ")");
+            });
+            return gattChain;
+        }
+
+        // sendCommand()自体は失敗を握りつぶすため通常は不要だが、呼び出し側でも明示的に
+        // 独立させておくことで、一連の初期化コマンドが1つの失敗で連鎖的に止まらないことを保証する。
+        async function sendCommandSafe(cmd) {
+            try {
+                await sendCommand(cmd);
+            } catch (e) {
+                log("コマンド送信エラー: " + cmd + " (" + e + ")");
+            }
         }
 
         renderAllChips();
