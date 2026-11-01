@@ -45,6 +45,9 @@
         .btn-cosmo-clear { background-color: #6c757d; }
         .btn-cosmo-save { background-color: #117a65; width: 100%; margin-top: 4px; }
         .btn-cosmo-save:hover { background-color: #0e6251; }
+        .btn-cosmo-hint { background-color: #8a5a00; width: 100%; margin-top: 4px; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+        .btn-cosmo-hint:disabled { background-color: #999; }
+        .btn-cosmo-hint.holding { background-color: #5c3c00; }
         .btn-cosmo-scan { background-color: #1a5fa8; width: 100%; margin-top: 4px; }
         .btn-cosmo-scan:hover { background-color: #154d88; }
         .cosmo-swatch { display: inline-block; width: 18px; height: 18px; border-radius: 50%; border: 1px solid #999; vertical-align: middle; margin-left: 6px; }
@@ -599,6 +602,7 @@
                 controls.style.opacity = "0.5";
                 controls.style.pointerEvents = "none";
                 configLoaded = false;
+                stopCosmoHint();
                 setSwControlsEnabled(false);
             }
         }
@@ -1072,10 +1076,12 @@
                         <select id="cosmoCol${n}" onchange="updateCosmoSwatch(${n})">${colorOpts}</select></div>
                     <div class="form-row"><label for="cosmoSens${n}">感度</label>
                         <select id="cosmoSens${n}">${sensOpts}</select></div>
+                    <button id="cosmoHint${n}" class="btn-cosmo-hint" data-slot="${n}"${s.state === 2 ? '' : ' disabled'}>押している間 光らせる</button>
                     <button class="btn-cosmo-save" onclick="saveCosmo(${n})">スロット${n} 保存</button>
                 </div>`;
             }).join('');
             document.getElementById('cosmoSlots').innerHTML = html;
+            if (cosmoHintSlot !== null) document.getElementById('cosmoHint' + cosmoHintSlot)?.classList.add('holding');
         }
 
         // 接続状態の変化は頻繁に届くため、表示中の入力欄(未保存の変更)を作り直さず状態表示だけ更新する
@@ -1086,8 +1092,49 @@
                 const [label, cls] = COSMO_STATE[s.state] || COSMO_STATE[0];
                 el.textContent = label;
                 el.className = 'cosmo-state ' + cls;
+                const hint = document.getElementById('cosmoHint' + (i + 1));
+                if (hint) hint.disabled = s.state !== 2;
+                if (s.state !== 2 && cosmoHintSlot === i + 1) stopCosmoHint();
             });
         }
+
+        // 介助者が押している間だけ、本人に押してほしいCosmoを点滅させる。
+        // 離した通知が届かない場合に備え、BLEmodule側は再送が3秒途切れると自動で止める
+        let cosmoHintSlot = null;
+        let cosmoHintTimer = null;
+
+        function startCosmoHint(n) {
+            if (cosmoHintSlot === n) return;
+            stopCosmoHint();
+            cosmoHintSlot = n;
+            document.getElementById('cosmoHint' + n)?.classList.add('holding');
+            const send = () => sendCommand(`#AMOCOSMOHINT:${n},1!`);
+            send();
+            cosmoHintTimer = setInterval(send, 1000);
+        }
+
+        function stopCosmoHint() {
+            if (cosmoHintSlot === null) return;
+            const n = cosmoHintSlot;
+            cosmoHintSlot = null;
+            clearInterval(cosmoHintTimer);
+            document.getElementById('cosmoHint' + n)?.classList.remove('holding');
+            sendCommand(`#AMOCOSMOHINT:${n},0!`);
+        }
+
+        // スロット欄は設定受信で作り直されるため、ボタン個別ではなく文書全体で拾う
+        document.addEventListener('pointerdown', e => {
+            const btn = e.target.closest && e.target.closest('.btn-cosmo-hint');
+            if (!btn || btn.disabled) return;
+            e.preventDefault();
+            startCosmoHint(Number(btn.dataset.slot));
+        });
+        ['pointerup', 'pointercancel'].forEach(t => document.addEventListener(t, stopCosmoHint));
+        window.addEventListener('blur', stopCosmoHint);
+        document.addEventListener('visibilitychange', () => { if (document.hidden) stopCosmoHint(); });
+        document.addEventListener('contextmenu', e => {
+            if (e.target.closest && e.target.closest('.btn-cosmo-hint')) e.preventDefault();
+        });
 
         function updateCosmoSwatch(n) {
             const c = parseInt(document.getElementById('cosmoCol' + n).value, 10) || 0;
