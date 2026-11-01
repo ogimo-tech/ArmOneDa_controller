@@ -1247,7 +1247,7 @@
         }
 
         async function resetSettings() {
-            if (!confirm("設定をデフォルトに戻します。よろしいですか？\n（BLEモジュールv1.5.0以降は、BLEモードもアームワンダBLEモードに戻り、MIDI・顔スイッチ・Cosmoの設定も初期化されます。BLEモードが変わる場合はデバイスが再起動します）")) return;
+            if (!confirm("設定をデフォルトに戻します。よろしいですか？")) return;
             await sendCommand('#AMOCFGRESET!');
             amoLog('settings_reset', amoCtx());
         }
