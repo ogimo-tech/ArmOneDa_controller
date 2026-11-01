@@ -495,10 +495,17 @@
         // 旧ファーム(v1.3.2)はこのコマンド自体を認識せず無応答となるため、応答の有無がそのままケーパビリティの証明になる。
         let midiModeSupported = false;
 
-        // #AMOCOSMOCFGGET! への応答有無で判定する、Cosmoモード対応フラグ。
-        // #AMOVERRES はNanoの版数でありBLEmoduleの版を表さないため、MIDIと同じく応答の有無で判定する。
+        // #AMOVERRES はNanoの版数なので、#AMOMODERES に付くBLEmoduleの版で判定する(版なし=v1.4.0以前)
         let cosmoModeSupported = false;
-        let cosmoCfgResReceived = false;
+
+        function bleVerAtLeast(ver, min) {
+            const a = (ver || '').split('.').map(n => parseInt(n, 10) || 0);
+            const b = min.split('.').map(Number);
+            for (let i = 0; i < b.length; i++) {
+                if ((a[i] || 0) !== b[i]) return (a[i] || 0) > b[i];
+            }
+            return true;
+        }
 
         async function queryBleMode() {
             // モード判定は接続成功のための必須条件ではないため、GATT書込失敗時も
@@ -509,12 +516,9 @@
                 await new Promise(resolve => setTimeout(resolve, 600));
                 midiModeSupported = modeResReceived;
                 if (!modeResReceived) log("モード応答なし（旧ファーム）");
-                if (modeResReceived) {
-                    cosmoCfgResReceived = false;
+                if (modeResReceived && bleMode === 3) {
                     await sendCommand('#AMOCOSMOCFGGET!');
-                    await new Promise(resolve => setTimeout(resolve, 600));
-                    cosmoModeSupported = cosmoCfgResReceived;
-                    if (cosmoModeSupported) await sendCommand('#AMOCOSMOSTGET!');
+                    await sendCommand('#AMOCOSMOSTGET!');
                 }
             } catch (e) {
                 log("モード問い合わせ失敗: " + e);
@@ -721,7 +725,9 @@
             }
             if (msg.startsWith('#AMOMODERES:')) {
                 modeResReceived = true;
-                bleMode = parseInt(msg.slice(12, -1), 10) || 0;
+                const p = msg.slice(12, -1).split(',');
+                bleMode = parseInt(p[0], 10) || 0;
+                cosmoModeSupported = bleVerAtLeast(p[1], '1.5.0');
                 updateBleMode();
                 log("BLEモード: " + bleMode);
                 return;
@@ -737,7 +743,6 @@
                 return;
             }
             if (msg.startsWith('#AMOCOSMOCFGRES:')) {
-                cosmoCfgResReceived = true;
                 const p = msg.slice(16, -1).split(',');
                 parseCosmoCfg(parseInt(p[0], 10), p[1] || '', p[2] || 'AMOS1ON', parseInt(p[3], 10) || 0, parseInt(p[4], 10));
                 return;
