@@ -289,6 +289,11 @@
             <!-- Cosmoモード パネル -->
             <div id="modePanel3" class="midi-panel" style="display:none;">
                 <div class="midi-panel-title">Cosmo設定（最大2台）</div>
+                <div id="cosmoSwitchNote" class="relay-note" style="display:none;">
+                    まだCosmoモードになっていません。下の「設定を反映」を押してCosmoモードに切り替えてください（デバイスが再起動します）。<br>
+                    再起動後にこの画面へ再接続すると、Cosmoの登録や色・感度の設定ができるようになります。
+                </div>
+                <div id="cosmoConfigArea">
                 <div id="cosmoSlots"></div>
                 <div class="midi-panel-title" style="margin-top:14px;">Cosmoを探して登録</div>
                 <div id="cosmoScanArea">
@@ -302,13 +307,11 @@
                     <button id="cosmoScanBtn" class="btn-cosmo-scan" onclick="scanCosmo()">Cosmoを探す</button>
                     <div id="cosmoFoundList"></div>
                 </div>
-                <div id="cosmoScanNote" class="midi-note" style="display:none;">
-                    Cosmoの検索・登録は、Cosmoモードに切り替えてから行ってください（動作・色・感度は先に保存できます）。
-                </div>
                 <div class="midi-note">
                     「光らせる」を押すと、そのCosmoが登録先スロットの色で3回点滅します。手元のCosmoかどうか確かめてから登録してください。<br>
                     Cosmoが見つからないときは、Cosmoの電源と、iPadのCosmoアプリと接続していないかを確認してください。<br>
                     Cosmoの電源を切るための長押しも「押した」として届くため、電源を切るときにアームが数秒動くことがあります。
+                </div>
                 </div>
             </div>
 
@@ -677,10 +680,10 @@
             for (const i of [0, 1, 2, 3]) {
                 document.getElementById('modePanel' + i).style.display = (i === selectedBleMode) ? 'block' : 'none';
             }
-            // 検索・点滅・登録はBLEmoduleがCosmoモードで動いているときだけ可能
+            // 切替前に設定欄まで見せると、選んだだけで切り替わったと誤解してCosmoの接続を待ってしまう
             const cosmoActive = bleMode === 3;
-            document.getElementById('cosmoScanArea').style.display = cosmoActive ? 'block' : 'none';
-            document.getElementById('cosmoScanNote').style.display = cosmoActive ? 'none' : 'block';
+            document.getElementById('cosmoConfigArea').style.display = cosmoActive ? 'block' : 'none';
+            document.getElementById('cosmoSwitchNote').style.display = cosmoActive ? 'none' : 'block';
         }
 
         async function onNotify(event) {
@@ -1220,14 +1223,14 @@
             }
 
             if (selectedBleMode === 3) {
-                if (willSwitch && !confirm('Cosmoモードに切り替えます。\nデバイスが再起動されます。よろしいですか？')) return;
-                await sendCosmoCfg(1);
-                await sendCosmoCfg(2);
+                // 切替時は設定欄を見せていないので、保存済みのCosmo設定はそのまま残す
                 if (willSwitch) {
-                    await new Promise(r => setTimeout(r, 300));
+                    if (!confirm('Cosmoモードに切り替えます。\nデバイスが再起動されます。よろしいですか？')) return;
                     await sendCommand('#AMOBLEMODE:3!');
                     log('Cosmoモードへ切替中... デバイスが再起動します');
                 } else {
+                    await sendCosmoCfg(1);
+                    await sendCosmoCfg(2);
                     log('Cosmo設定を保存しました');
                 }
                 return;
@@ -1244,7 +1247,7 @@
         }
 
         async function resetSettings() {
-            if (!confirm("設定をデフォルトに戻します。よろしいですか？")) return;
+            if (!confirm("設定をデフォルトに戻します。よろしいですか？\n（BLEモジュールv1.5.0以降は、BLEモードもアームワンダBLEモードに戻り、MIDI・顔スイッチ・Cosmoの設定も初期化されます。BLEモードが変わる場合はデバイスが再起動します）")) return;
             await sendCommand('#AMOCFGRESET!');
             amoLog('settings_reset', amoCtx());
         }
