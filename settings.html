@@ -35,6 +35,21 @@
         .midi-note-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
         .midi-note-row input { width: 90px; padding: 6px; font-size: 1rem; }
         .midi-note-name { font-size: 0.85rem; color: #666; }
+        .cosmo-slot { border: 1px solid #e0e0e0; border-radius: 6px; padding: 10px; margin-bottom: 10px; }
+        .cosmo-slot-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 0.9rem; font-weight: bold; color: #555; }
+        .cosmo-state { font-size: 0.8rem; font-weight: normal; padding: 2px 8px; border-radius: 10px; background: #eee; color: #666; }
+        .cosmo-state-on { background: #d4edda; color: #155724; }
+        .cosmo-state-wait { background: #fff3cd; color: #856404; }
+        .cosmo-addr-row { display: flex; justify-content: space-between; align-items: center; font-size: 0.85rem; color: #666; margin-bottom: 8px; }
+        .btn-small { padding: 6px 10px; font-size: 0.8rem; border-radius: 6px; }
+        .btn-cosmo-clear { background-color: #6c757d; }
+        .btn-cosmo-save { background-color: #117a65; width: 100%; margin-top: 4px; }
+        .btn-cosmo-save:hover { background-color: #0e6251; }
+        .btn-cosmo-scan { background-color: #1a5fa8; width: 100%; margin-top: 4px; }
+        .btn-cosmo-scan:hover { background-color: #154d88; }
+        .cosmo-swatch { display: inline-block; width: 18px; height: 18px; border-radius: 50%; border: 1px solid #999; vertical-align: middle; margin-left: 6px; }
+        .cosmo-found { display: flex; align-items: center; gap: 6px; padding: 8px 0; border-top: 1px solid #eee; font-size: 0.85rem; }
+        .cosmo-found-addr { flex: 1; color: #555; }
         .midi-note { font-size: 0.78rem; color: #856404; background: #fff3cd; border: 1px solid #ffeeba; border-radius: 4px; padding: 8px 10px; margin-top: 10px; line-height: 1.5; }
         .btn-toggle { background-color: #f0f0f0; color: #555; border: 1px solid #ccc; width: 100%; text-align: left; display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; border-radius: 6px; font-size: 0.9rem; font-weight: normal; margin-top: 4px; }
         .btn-toggle:hover { background-color: #e2e2e2; color: #333; }
@@ -271,6 +286,32 @@
                 </div>
             </div>
 
+            <!-- Cosmoモード パネル -->
+            <div id="modePanel3" class="midi-panel" style="display:none;">
+                <div class="midi-panel-title">Cosmo設定（最大2台）</div>
+                <div id="cosmoSlots"></div>
+                <div class="midi-panel-title" style="margin-top:14px;">Cosmoを探して登録</div>
+                <div id="cosmoScanArea">
+                    <div class="form-row">
+                        <label for="cosmoTargetSlot">登録先</label>
+                        <select id="cosmoTargetSlot">
+                            <option value="1">スロット1</option>
+                            <option value="2">スロット2</option>
+                        </select>
+                    </div>
+                    <button id="cosmoScanBtn" class="btn-cosmo-scan" onclick="scanCosmo()">Cosmoを探す</button>
+                    <div id="cosmoFoundList"></div>
+                </div>
+                <div id="cosmoScanNote" class="midi-note" style="display:none;">
+                    Cosmoの検索・登録は、Cosmoモードに切り替えてから行ってください（動作・色・感度は先に保存できます）。
+                </div>
+                <div class="midi-note">
+                    「光らせる」を押すと、そのCosmoが登録先スロットの色で3回点滅します。手元のCosmoかどうか確かめてから登録してください。<br>
+                    Cosmoが見つからないときは、Cosmoの電源と、iPadのCosmoアプリと接続していないかを確認してください。<br>
+                    Cosmoの電源を切るための長押しも「押した」として届くため、電源を切るときにアームが数秒動くことがあります。
+                </div>
+            </div>
+
             <button class="btn-save" onclick="applyModeSettings()">設定を反映</button>
         </div>
 
@@ -329,7 +370,7 @@
         let caps = 0;
         let verResReceived = false;
         let configLoaded = false;
-        let bleMode = 0; // 0=ArmOneDa, 1=BTRelay, 2=MIDI (デバイスの現在モード)
+        let bleMode = 0; // 0=ArmOneDa, 1=BTRelay, 2=MIDI, 3=Cosmo (デバイスの現在モード)
         let selectedBleMode = null; // UIで選択中のモード。null=未初期化(接続後にbleModeで初期化)
         let bleModeExpanded = false; // モード選択リストの開閉状態
         let fwMajor = 0; // ファームメジャーバージョン (1=Ver1系, 2=Ver2系)
@@ -452,6 +493,11 @@
         // 旧ファーム(v1.3.2)はこのコマンド自体を認識せず無応答となるため、応答の有無がそのままケーパビリティの証明になる。
         let midiModeSupported = false;
 
+        // #AMOCOSMOCFGGET! への応答有無で判定する、Cosmoモード対応フラグ。
+        // #AMOVERRES はNanoの版数でありBLEmoduleの版を表さないため、MIDIと同じく応答の有無で判定する。
+        let cosmoModeSupported = false;
+        let cosmoCfgResReceived = false;
+
         async function queryBleMode() {
             // モード判定は接続成功のための必須条件ではないため、GATT書込失敗時も
             // ここで握りつぶしてサービス判定ベースの bleMode のまま接続処理を継続させる。
@@ -461,6 +507,13 @@
                 await new Promise(resolve => setTimeout(resolve, 600));
                 midiModeSupported = modeResReceived;
                 if (!modeResReceived) log("モード応答なし（旧ファーム）");
+                if (modeResReceived) {
+                    cosmoCfgResReceived = false;
+                    await sendCommand('#AMOCOSMOCFGGET!');
+                    await new Promise(resolve => setTimeout(resolve, 600));
+                    cosmoModeSupported = cosmoCfgResReceived;
+                    if (cosmoModeSupported) await sendCommand('#AMOCOSMOSTGET!');
+                }
             } catch (e) {
                 log("モード問い合わせ失敗: " + e);
             }
@@ -519,6 +572,7 @@
                 badge.className = "mode-badge";
                 selectedBleMode = null;
                 midiModeSupported = false;
+                cosmoModeSupported = false;
                 bleModeExpanded = false;
                 document.getElementById("bleModeCurrentText").textContent = "---";
                 document.getElementById("bleModeToggleLabel").textContent = "---";
@@ -528,6 +582,8 @@
                 document.getElementById("modePanel0").style.display = "block";
                 document.getElementById("modePanel1").style.display = "none";
                 document.getElementById("modePanel2").style.display = "none";
+                document.getElementById("modePanel3").style.display = "none";
+                document.getElementById("cosmoFoundList").innerHTML = "";
                 fwMajor = 0;
                 aoSelectedSec = null;
                 document.getElementById("autoOffSection").style.display = "none";
@@ -541,15 +597,22 @@
             }
         }
 
-        const BLE_MODE_LABELS = ['アームワンダBLEモード', 'BT Relay(顔スイッチ)モード', 'MIDIモード'];
-        const BLE_MODE_CURRENT_LABELS = ['ArmOneDa BLEモード', 'BT Relayモード', 'MIDIモード'];
+        const BLE_MODE_LABELS = ['アームワンダBLEモード', 'BT Relay(顔スイッチ)モード', 'MIDIモード', 'Cosmoモード'];
+        const BLE_MODE_CURRENT_LABELS = ['ArmOneDa BLEモード', 'BT Relayモード', 'MIDIモード', 'Cosmoモード'];
 
         function updateBleMode() {
             const statusText = document.getElementById('statusText');
             const badge      = document.getElementById('currentModeBadge');
             const devName = bluetoothDevice.name || "";
 
-            if (bleMode === 2) {
+            if (bleMode === 3) {
+                const displayName = devName.startsWith(DEVICE_PREFIX) ? devName : "ArmOneDa BLE";
+                statusText.innerText = "接続済み: " + displayName;
+                statusText.style.color = "#28a745";
+                badge.textContent = 'Cosmoモード';
+                badge.className = 'mode-badge mode-badge-fs';
+                badge.style.display = 'inline-block';
+            } else if (bleMode === 2) {
                 const displayName = devName.startsWith("ArmOneDa-MIDI-") ? devName : "ArmOneDa MIDI";
                 statusText.innerText = "接続済み: " + displayName;
                 statusText.style.color = "#28a745";
@@ -601,6 +664,7 @@
             list.innerHTML = '';
             BLE_MODE_LABELS.forEach((label, idx) => {
                 if (idx === 2 && !midiModeSupported) return; // MIDI非対応機ではMIDIを選ばせない
+                if (idx === 3 && !cosmoModeSupported) return; // Cosmo非対応機(v1.4.0以前)ではCosmoを選ばせない
                 const btn = document.createElement('button');
                 btn.className = 'ble-mode-option' + (idx === selectedBleMode ? ' ble-mode-option-active' : '');
                 btn.textContent = label;
@@ -610,9 +674,13 @@
         }
 
         function updateModePanelVisibility() {
-            for (const i of [0, 1, 2]) {
+            for (const i of [0, 1, 2, 3]) {
                 document.getElementById('modePanel' + i).style.display = (i === selectedBleMode) ? 'block' : 'none';
             }
+            // 検索・点滅・登録はBLEmoduleがCosmoモードで動いているときだけ可能
+            const cosmoActive = bleMode === 3;
+            document.getElementById('cosmoScanArea').style.display = cosmoActive ? 'block' : 'none';
+            document.getElementById('cosmoScanNote').style.display = cosmoActive ? 'none' : 'block';
         }
 
         async function onNotify(event) {
@@ -664,6 +732,37 @@
             }
             if (msg.startsWith('#AMOMIDICFGOK!')) {
                 log("MIDI設定 保存完了");
+                return;
+            }
+            if (msg.startsWith('#AMOCOSMOCFGRES:')) {
+                cosmoCfgResReceived = true;
+                const p = msg.slice(16, -1).split(',');
+                parseCosmoCfg(parseInt(p[0], 10), p[1] || '', p[2] || 'AMOS1ON', parseInt(p[3], 10) || 0, parseInt(p[4], 10));
+                return;
+            }
+            if (msg.startsWith('#AMOCOSMOST:')) {
+                const p = msg.slice(12, -1).split(',').map(Number);
+                cosmoSlots.forEach((s, i) => { s.state = p[i] || 0; });
+                updateCosmoStates();
+                return;
+            }
+            if (msg.startsWith('#AMOCOSMOFOUND:')) {
+                const p = msg.slice(15, -1).split(',');
+                addCosmoFound(p[0], parseInt(p[1], 10));
+                return;
+            }
+            if (msg.startsWith('#AMOCOSMOSCANEND!')) {
+                finishCosmoScan();
+                return;
+            }
+            if (msg.startsWith('#AMOCOSMOIDOK!')) { log("Cosmoを点滅させました"); return; }
+            if (msg.startsWith('#AMOCOSMOIDNG!')) {
+                alert('Cosmoに接続できませんでした。もう一度「Cosmoを探す」からやり直してください。');
+                return;
+            }
+            if (msg.startsWith('#AMOCOSMOCFGOK!')) { log("Cosmo設定 保存完了"); return; }
+            if (msg.startsWith('#AMOCOSMOSETOK!') || msg.startsWith('#AMOCOSMOCLROK!')) {
+                await sendCommandSafe('#AMOCOSMOCFGGET!');
                 return;
             }
             if (msg.startsWith('#AMOFSCMDRES:')) {
@@ -927,6 +1026,158 @@
             updateMidiNoteName();
         }
 
+        // ───── Cosmo ─────
+        // 色番号はファーム(CosmoLogic.h)の色テーブルと同じ順序
+        const COSMO_COLORS = [
+            ['黄', '#f1c40f'], ['青', '#2e86de'], ['赤', '#e74c3c'], ['緑', '#27ae60'],
+            ['紫', '#8e44ad'], ['水色', '#48c9e0'], ['白', '#ffffff'], ['オレンジ', '#e67e22'],
+        ];
+        const COSMO_SENS = [['0', '高感度（軽くふれる）'], ['1', '標準'], ['2', '低感度（しっかり押す）']];
+        const COSMO_STATE = [['未登録', ''], ['探しています…', 'cosmo-state-wait'], ['接続中', 'cosmo-state-on']];
+        const cosmoSlots = [
+            { addr: '', cmd: 'AMOS1ON', col: 0, sens: 1, state: 0 },
+            { addr: '', cmd: 'AMOR1ON', col: 1, sens: 1, state: 0 },
+        ];
+
+        function addrTail(addr) { return addr ? addr.slice(-5) : ''; }
+
+        function renderCosmoSlots() {
+            const html = cosmoSlots.map((s, i) => {
+                const n = i + 1;
+                const [stateLabel, stateCls] = COSMO_STATE[s.state] || COSMO_STATE[0];
+                const colorOpts = COSMO_COLORS.map(([name], c) =>
+                    `<option value="${c}"${c === s.col ? ' selected' : ''}>${name}</option>`).join('');
+                const sensOpts = COSMO_SENS.map(([v, name]) =>
+                    `<option value="${v}"${Number(v) === s.sens ? ' selected' : ''}>${name}</option>`).join('');
+                return `<div class="cosmo-slot">
+                    <div class="cosmo-slot-head">スロット${n}<span id="cosmoState${n}" class="cosmo-state ${stateCls}">${stateLabel}</span></div>
+                    <div class="cosmo-addr-row">
+                        <span>${s.addr ? '登録中: …' + addrTail(s.addr) : '未登録（下の「Cosmoを探す」から登録）'}</span>
+                        ${s.addr ? `<button class="btn-small btn-cosmo-clear" onclick="clearCosmo(${n})">解除</button>` : ''}
+                    </div>
+                    <div class="form-row"><label for="cosmoCmd${n}">動作</label>
+                        <select id="cosmoCmd${n}">
+                            <option value="AMOS1ON"${s.cmd === 'AMOS1ON' ? ' selected' : ''}>単打</option>
+                            <option value="AMOR1ON"${s.cmd === 'AMOR1ON' ? ' selected' : ''}>連打</option>
+                        </select></div>
+                    <div class="form-row"><label for="cosmoCol${n}">色<span id="cosmoSwatch${n}" class="cosmo-swatch"
+                            style="background:${COSMO_COLORS[s.col][1]}"></span></label>
+                        <select id="cosmoCol${n}" onchange="updateCosmoSwatch(${n})">${colorOpts}</select></div>
+                    <div class="form-row"><label for="cosmoSens${n}">感度</label>
+                        <select id="cosmoSens${n}">${sensOpts}</select></div>
+                    <button class="btn-cosmo-save" onclick="saveCosmo(${n})">スロット${n} 保存</button>
+                </div>`;
+            }).join('');
+            document.getElementById('cosmoSlots').innerHTML = html;
+        }
+
+        // 接続状態の変化は頻繁に届くため、表示中の入力欄(未保存の変更)を作り直さず状態表示だけ更新する
+        function updateCosmoStates() {
+            cosmoSlots.forEach((s, i) => {
+                const el = document.getElementById('cosmoState' + (i + 1));
+                if (!el) return;
+                const [label, cls] = COSMO_STATE[s.state] || COSMO_STATE[0];
+                el.textContent = label;
+                el.className = 'cosmo-state ' + cls;
+            });
+        }
+
+        function updateCosmoSwatch(n) {
+            const c = parseInt(document.getElementById('cosmoCol' + n).value, 10) || 0;
+            document.getElementById('cosmoSwatch' + n).style.background = COSMO_COLORS[c][1];
+        }
+
+        function parseCosmoCfg(n, addr, cmd, col, sens) {
+            const s = cosmoSlots[n - 1];
+            if (!s) return;
+            s.addr = addr;
+            s.cmd  = cmd.startsWith('AMOR1') ? 'AMOR1ON' : 'AMOS1ON';
+            s.col  = (col >= 0 && col < COSMO_COLORS.length) ? col : 0;
+            s.sens = (sens >= 0 && sens <= 2) ? sens : 1;
+            if (!addr) s.state = 0;
+            renderCosmoSlots();
+        }
+
+        function readCosmoForm(n) {
+            return {
+                cmd:  document.getElementById('cosmoCmd' + n).value,
+                col:  parseInt(document.getElementById('cosmoCol' + n).value, 10),
+                sens: parseInt(document.getElementById('cosmoSens' + n).value, 10),
+            };
+        }
+
+        async function sendCosmoCfg(n) {
+            const f = readCosmoForm(n);
+            Object.assign(cosmoSlots[n - 1], f);
+            await sendCommand(`#AMOCOSMOCFG:${n},${f.cmd},${f.col},${f.sens}!`);
+            amoLog('settings_save_cosmo', Object.assign(amoCtx(), { slot: n, cmd: f.cmd, col: f.col, sens: f.sens }));
+        }
+
+        async function saveCosmo(n) {
+            await sendCosmoCfg(n);
+            log('Cosmoスロット' + n + 'の設定を保存しました');
+        }
+
+        async function clearCosmo(n) {
+            if (!confirm('スロット' + n + 'のCosmoの登録を解除します。よろしいですか？')) return;
+            await sendCommand('#AMOCOSMOCLR:' + n + '!');
+        }
+
+        function rssiLabel(rssi) {
+            if (rssi >= -60) return '近い';
+            if (rssi >= -80) return 'ふつう';
+            return '遠い';
+        }
+
+        async function scanCosmo() {
+            const btn = document.getElementById('cosmoScanBtn');
+            btn.disabled = true;
+            btn.textContent = '探しています…';
+            document.getElementById('cosmoFoundList').innerHTML = '';
+            await sendCommand('#AMOCOSMOSCAN!');
+            // 無応答(切断など)でボタンが押せないままにならないようにする
+            setTimeout(() => { if (btn.disabled) finishCosmoScan(); }, 10000);
+        }
+
+        function addCosmoFound(addr, rssi) {
+            const row = document.createElement('div');
+            row.className = 'cosmo-found';
+            const label = document.createElement('span');
+            label.className = 'cosmo-found-addr';
+            label.textContent = '…' + addrTail(addr) + '（' + rssiLabel(rssi) + '）';
+            const blink = document.createElement('button');
+            blink.className = 'btn-small';
+            blink.textContent = '光らせる';
+            blink.onclick = () => sendCommand(`#AMOCOSMOID:${cosmoTargetSlot()},${addr}!`);
+            const reg = document.createElement('button');
+            reg.className = 'btn-small btn-cosmo-save';
+            reg.style.width = 'auto';
+            reg.textContent = '登録';
+            reg.onclick = () => registerCosmo(addr);
+            row.append(label, blink, reg);
+            document.getElementById('cosmoFoundList').appendChild(row);
+        }
+
+        function finishCosmoScan() {
+            const btn = document.getElementById('cosmoScanBtn');
+            btn.disabled = false;
+            btn.textContent = 'Cosmoを探す';
+            const list = document.getElementById('cosmoFoundList');
+            if (!list.children.length) {
+                list.innerHTML = '<div class="midi-note">見つかりませんでした。Cosmoの電源と、iPadのCosmoアプリと接続していないかを確認してください（登録済みで接続中のCosmoは一覧に出ません）。</div>';
+            }
+        }
+
+        function cosmoTargetSlot() { return document.getElementById('cosmoTargetSlot').value; }
+
+        async function registerCosmo(addr) {
+            const n = cosmoTargetSlot();
+            if (cosmoSlots[n - 1].addr && !confirm('スロット' + n + 'は登録済みです。置き換えますか？')) return;
+            await sendCommand(`#AMOCOSMOSET:${n},${addr}!`);
+            log('Cosmo …' + addrTail(addr) + ' をスロット' + n + 'に登録しました');
+            document.getElementById('cosmoFoundList').innerHTML = '';
+        }
+
         // 「送るコマンドがモード切替を伴うか」は selectedBleMode !== bleMode のみで決まる。
         // 特定モードからの遷移だけを特別扱いしない(過去のバグの再発防止)。
         async function applyModeSettings() {
@@ -964,6 +1215,20 @@
                     log('MIDIモードへ切替中... デバイスが再起動します');
                 } else {
                     log('MIDI設定を保存しました');
+                }
+                return;
+            }
+
+            if (selectedBleMode === 3) {
+                if (willSwitch && !confirm('Cosmoモードに切り替えます。\nデバイスが再起動されます。よろしいですか？')) return;
+                await sendCosmoCfg(1);
+                await sendCosmoCfg(2);
+                if (willSwitch) {
+                    await new Promise(r => setTimeout(r, 300));
+                    await sendCommand('#AMOBLEMODE:3!');
+                    log('Cosmoモードへ切替中... デバイスが再起動します');
+                } else {
+                    log('Cosmo設定を保存しました');
                 }
                 return;
             }
@@ -1015,6 +1280,7 @@
         renderAllChips();
         renderAoChips();
         renderDrumPicker();
+        renderCosmoSlots();
         updateUI();
     </script>
 </body>
