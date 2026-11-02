@@ -1049,6 +1049,11 @@
             { addr: '', cmd: 'AMOS1ON', col: 0, sens: 1, state: 0 },
             { addr: '', cmd: 'AMOR1ON', col: 1, sens: 1, state: 0 },
         ];
+        const COSMO_CMDS = ['AMOS1ON', 'AMOS1REV', 'AMOR1ON', 'AMOR1REV'];
+        cosmoSlots.forEach((s, i) => {
+            PICKER_OPTS['cosmoMode' + (i + 1)] = PICKER_OPTS.fs_mode;
+            PICKER_OPTS['cosmoDir' + (i + 1)]  = PICKER_OPTS.fs_dir;
+        });
 
         function addrTail(addr) { return addr ? addr.slice(-5) : ''; }
 
@@ -1066,11 +1071,12 @@
                         <span>${s.addr ? '登録中: …' + addrTail(s.addr) : '未登録（下の「Cosmoを探す」から登録）'}</span>
                         ${s.addr ? `<button class="btn-small btn-cosmo-clear" onclick="clearCosmo(${n})">解除</button>` : ''}
                     </div>
-                    <div class="form-row"><label for="cosmoCmd${n}">動作</label>
-                        <select id="cosmoCmd${n}">
-                            <option value="AMOS1ON"${s.cmd === 'AMOS1ON' ? ' selected' : ''}>単打</option>
-                            <option value="AMOR1ON"${s.cmd === 'AMOR1ON' ? ' selected' : ''}>連打</option>
-                        </select></div>
+                    <div class="chip-row"><label>振りモード</label>
+                        <div class="chip-group" id="cosmoMode${n}_group"></div>
+                        <input type="hidden" id="cosmoMode${n}" value="${s.cmd.startsWith('AMOR1') ? 'AMOR1' : 'AMOS1'}"></div>
+                    <div class="chip-row"><label>アーム方向</label>
+                        <div class="chip-group" id="cosmoDir${n}_group"></div>
+                        <input type="hidden" id="cosmoDir${n}" value="${s.cmd.endsWith('REV') ? 'REV' : 'ON'}"></div>
                     <div class="form-row"><label for="cosmoCol${n}">色<span id="cosmoSwatch${n}" class="cosmo-swatch"
                             style="background:${COSMO_COLORS[s.col][1]}"></span></label>
                         <select id="cosmoCol${n}" onchange="updateCosmoSwatch(${n})">${colorOpts}</select></div>
@@ -1081,6 +1087,7 @@
                 </div>`;
             }).join('');
             document.getElementById('cosmoSlots').innerHTML = html;
+            cosmoSlots.forEach((s, i) => { renderChips('cosmoMode' + (i + 1)); renderChips('cosmoDir' + (i + 1)); });
             if (cosmoHintSlot !== null) document.getElementById('cosmoHint' + cosmoHintSlot)?.classList.add('holding');
         }
 
@@ -1145,7 +1152,7 @@
             const s = cosmoSlots[n - 1];
             if (!s) return;
             s.addr = addr;
-            s.cmd  = cmd.startsWith('AMOR1') ? 'AMOR1ON' : 'AMOS1ON';
+            s.cmd  = COSMO_CMDS.includes(cmd) ? cmd : (cmd.startsWith('AMOR1') ? 'AMOR1ON' : 'AMOS1ON');
             s.col  = (col >= 0 && col < COSMO_COLORS.length) ? col : 0;
             s.sens = (sens >= 0 && sens <= 2) ? sens : 1;
             if (!addr) s.state = 0;
@@ -1154,7 +1161,7 @@
 
         function readCosmoForm(n) {
             return {
-                cmd:  document.getElementById('cosmoCmd' + n).value,
+                cmd:  document.getElementById('cosmoMode' + n).value + document.getElementById('cosmoDir' + n).value,
                 col:  parseInt(document.getElementById('cosmoCol' + n).value, 10),
                 sens: parseInt(document.getElementById('cosmoSens' + n).value, 10),
             };
