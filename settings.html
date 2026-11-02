@@ -1076,7 +1076,7 @@
                         <select id="cosmoCol${n}" onchange="updateCosmoSwatch(${n})">${colorOpts}</select></div>
                     <div class="form-row"><label for="cosmoSens${n}">感度</label>
                         <select id="cosmoSens${n}">${sensOpts}</select></div>
-                    <button id="cosmoHint${n}" class="btn-cosmo-hint" data-slot="${n}"${s.state === 2 ? '' : ' disabled'}>押している間 光らせる</button>
+                    <button id="cosmoHint${n}" class="btn-cosmo-hint" data-slot="${n}"${s.state === 2 ? '' : ' disabled'}>光る</button>
                     <button class="btn-cosmo-save" onclick="saveCosmo(${n})">スロット${n} 保存</button>
                 </div>`;
             }).join('');
